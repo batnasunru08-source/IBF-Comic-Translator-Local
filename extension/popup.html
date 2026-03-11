@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Comic Translator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      min-width: 300px;
+      padding: 14px;
+      margin: 0;
+    }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .section {
+      margin-bottom: 14px;
+    }
+
+    .group {
+      display: grid;
+      gap: 8px;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .field label {
+      font-weight: 700;
+      cursor: default;
+    }
+
+    select {
+      font-size: 13px;
+      padding: 6px 8px;
+    }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #555;
+      line-height: 1.35;
+    }
+
+    .muted {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">Comic Translator</div>
+
+  <div class="section">
+    <label>
+      <input type="checkbox" id="enabled">
+      <span>Включить расширение</span>
+    </label>
+  </div>
+
+  <div class="section" id="modeSection">
+    <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">
+      Режим отображения
+    </div>
+
+    <div class="group">
+      <label>
+        <input type="radio" name="renderMode" value="replace">
+        <span>Replace — заменить исходное</span>
+      </label>
+
+      <label>
+        <input type="radio" name="renderMode" value="overlay">
+        <span>Overlay — поверх оригинала</span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label for="sourceOcrLang">Язык текста (OCR)</label>
+      <select id="sourceOcrLang">
+        <option value="en">English</option>
+        <option value="ru">Русский</option>
+        <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+        <option value="es">Español</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="ch_sim">中文(简体)</option>
+        <option value="ch_tra">中文(繁體)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="targetLang">Переводить на</label>
+      <select id="targetLang">
+        <option value="Russian">Русский</option>
+        <option value="English">English</option>
+        <option value="German">Deutsch</option>
+        <option value="French">Français</option>
+        <option value="Spanish">Español</option>
+        <option value="Japanese">日本語</option>
+        <option value="Korean">한국어</option>
+        <option value="Simplified Chinese">中文(简体)</option>
+        <option value="Traditional Chinese">中文(繁體)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="hint">
+    Язык текста влияет на OCR.<br>
+    Язык перевода влияет на ответ модели.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
