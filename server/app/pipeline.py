@@ -119,12 +119,19 @@ def process_image_bytes(
             cv2.LINE_AA,
         )
     Image.fromarray(debug_img).save(debug_dir / "grouped_blocks.png")
-
+    
+    
     translator = get_translator()
-    for i, block in enumerate(blocks, start=1):
-        print(f"[PIPELINE] source[{i}]: {block.source_text!r}")
-        block.translated_text = translator.translate(block.source_text, target_language=target_lang)
-        print(f"[PIPELINE] translated[{i}]: {block.translated_text!r}")
+
+    texts = [block.source_text for block in blocks]
+    for i, text in enumerate(texts, start=1):
+        print(f"[PIPELINE] source[{i}]: {text!r}")
+
+    translated_texts = translator.translate_batch(texts, target_language=target_lang)
+
+    for i, (block, translated) in enumerate(zip(blocks, translated_texts), start=1):
+        block.translated_text = translated
+        print(f"[PIPELINE] translated[{i}]: {translated!r}")
 
     cleaned = inpaint_text(np_image, blocks)
     rendered = render_translations(cleaned, blocks)

@@ -8,6 +8,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
 MODEL_ID = "tencent/HY-MT1.5-7B"
+# Для более высокой скорости можно попробовать:
+# MODEL_ID = "tencent/HY-MT1.5-1.8B"
 
 
 class HyMtTranslator:
@@ -55,29 +57,41 @@ class HyMtTranslator:
         except StopIteration:
             return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def translate(self, source_text: str, target_language: str = "Russian") -> str:
-        source_text = (source_text or "").strip()
-        if not source_text:
-            return ""
-
-        prompt = (
+    def _build_prompt(self, source_text: str, target_language: str) -> str:
+        return (
             f"Translate the following segment into {target_language}, "
             "without additional explanation.\n\n"
             f"{source_text}"
         )
 
-        messages = [{"role": "user", "content": prompt}]
-        model_inputs = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=False,
+    def translate_batch(self, texts: list[str], target_language: str = "Russian") -> list[str]:
+        clean_texts = [(t or "").strip() for t in texts]
+        prompts = [self._build_prompt(t, target_language) for t in clean_texts if t]
+
+        if not prompts:
+            return [""] * len(texts)
+
+        messages_batch = [[{"role": "user", "content": prompt}] for prompt in prompts]
+
+        rendered_prompts = [
+            self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            for messages in messages_batch
+        ]
+
+        model_inputs = self.tokenizer(
+            rendered_prompts,
             return_tensors="pt",
-            return_dict=True,
+            padding=True,
+            truncation=True,
         )
 
         device = self._get_model_input_device()
         model_inputs = {k: v.to(device) for k, v in model_inputs.items()}
-        input_length = model_inputs["input_ids"].shape[-1]
+        input_lengths = model_inputs["attention_mask"].sum(dim=1).tolist()
 
         with torch.inference_mode():
             outputs = self.model.generate(
@@ -86,10 +100,26 @@ class HyMtTranslator:
                 do_sample=False,
                 repetition_penalty=1.02,
                 pad_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
             )
 
-        new_tokens = outputs[0][input_length:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        decoded: list[str] = []
+        for i, input_len in enumerate(input_lengths):
+            new_tokens = outputs[i][int(input_len):]
+            decoded.append(self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip())
+
+        result: list[str] = []
+        decoded_iter = iter(decoded)
+        for original in texts:
+            if (original or "").strip():
+                result.append(next(decoded_iter))
+            else:
+                result.append("")
+
+        return result
+
+    def translate(self, source_text: str, target_language: str = "Russian") -> str:
+        return self.translate_batch([source_text], target_language=target_language)[0]
 
 
 @lru_cache(maxsize=1)

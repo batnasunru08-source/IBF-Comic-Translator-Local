@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import requests
@@ -9,12 +10,40 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.pipeline import process_image_bytes
+from app.translator import get_translator
+from app.ocr import get_easyocr_reader
 
 BASE_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = BASE_DIR / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="Comic Translator API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[STARTUP] Preloading translation model...")
+    translator = get_translator()
+
+    # Необязательный прогрев генерации.
+    # Делает старт сервера чуть длиннее, но уменьшает задержку первого реального перевода.
+    try:
+        _ = translator.translate_batch(["Hello"], target_language="Russian")
+        print("[STARTUP] Translator warm-up complete")
+    except Exception as exc:
+        print(f"[STARTUP] Translator warm-up failed: {exc}")
+
+    print("[STARTUP] Preloading EasyOCR readers...")
+    try:
+        get_easyocr_reader("en")
+        print("[STARTUP] EasyOCR en ready")
+    except Exception as exc:
+        print(f"[STARTUP] EasyOCR preload failed: {exc}")
+
+    yield
+
+    print("[SHUTDOWN] Server is stopping")
+
+
+app = FastAPI(title="Comic Translator API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
