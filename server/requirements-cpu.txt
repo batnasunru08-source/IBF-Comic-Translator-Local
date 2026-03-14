@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# CPU runtime for local development and Windows fallback.
+torch>=2.9.1
+paddlepaddle>=3.3.0

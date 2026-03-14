@@ -101,11 +101,16 @@ function getState(img) {
       overlay: null,
       clone: null,
       translatedDataUrl: null,
+      translationKey: null,
       originalDisplay: null
     };
     STATES.set(img, state);
   }
   return state;
+}
+
+function makeTranslationKey(imageUrl) {
+  return JSON.stringify([imageUrl || "", SETTINGS.sourceOcrLang || "en", SETTINGS.targetLang || "Russian"]);
 }
 
 function cleanupState(img) {
@@ -344,6 +349,14 @@ function createButton(img) {
 
     const imageUrl = getImageUrl(img);
     if (!imageUrl) return;
+    const state = getState(img);
+    const translationKey = makeTranslationKey(imageUrl);
+
+    if (state.translatedDataUrl && state.translationKey === translationKey) {
+      applyTranslatedView(img);
+      img.dataset.comicTranslatorTranslated = "1";
+      return;
+    }
 
     const originalText = button.textContent;
     button.disabled = true;
@@ -364,19 +377,22 @@ function createButton(img) {
         return;
       }
 
-      const fetchResult = await chrome.runtime.sendMessage({
-        type: "fetch-image-as-data-url",
-        url: response.result_url
-      });
+      let translatedDataUrl = response.dataUrl || null;
+      let fetchResult = null;
+      if (!translatedDataUrl) {
+        fetchResult = await chrome.runtime.sendMessage({
+          type: "fetch-image-as-data-url",
+          url: response.result_url
+        });
+      }
 
-      if (!fetchResult?.ok || !fetchResult?.dataUrl) {
+      if (!translatedDataUrl && (!fetchResult?.ok || !fetchResult?.dataUrl)) {
         console.error("[Comic Translator] fetch result error:", fetchResult?.error || fetchResult);
         alert(`Ошибка загрузки переведённого изображения: ${fetchResult?.error || "неизвестная ошибка"}`);
         return;
       }
-
-      const state = getState(img);
-      state.translatedDataUrl = fetchResult.dataUrl;
+      state.translatedDataUrl = translatedDataUrl || fetchResult.dataUrl;
+      state.translationKey = translationKey;
 
       if (!img.dataset.originalSrc) {
         img.dataset.originalSrc = img.src;

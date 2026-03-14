@@ -1,0 +1,25 @@
+-r requirements.txt
+
+# WSL2/Linux GPU setup.
+# Use `bash install-wsl-gpu.sh` instead of `pip install -r requirements-linux-gpu.txt`
+# if you need both PaddleOCR and PyTorch on GPU in one environment.
+#
+# Reason: upstream wheel metadata currently conflicts on exact
+# `nvidia-cuda-runtime` versions, so a single pip resolution fails.
+--extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu130/
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+# Install torch separately with `--no-deps` in `install-wsl-gpu.sh`.
+paddlepaddle-gpu==3.3.0 ; platform_system == "Linux" and platform_machine == "x86_64"
+bitsandbytes>=0.46.1 ; platform_system == "Linux" and platform_machine == "x86_64"
+
+# `torch --no-deps` still needs these Python/native packages present.
+filelock ; platform_system == "Linux" and platform_machine == "x86_64"
+typing-extensions>=4.10.0 ; platform_system == "Linux" and platform_machine == "x86_64"
+sympy>=1.13.3 ; platform_system == "Linux" and platform_machine == "x86_64"
+networkx>=2.5.1 ; platform_system == "Linux" and platform_machine == "x86_64"
+jinja2 ; platform_system == "Linux" and platform_machine == "x86_64"
+fsspec>=0.8.5 ; platform_system == "Linux" and platform_machine == "x86_64"
+cuda-bindings==13.0.3 ; platform_system == "Linux" and platform_machine == "x86_64"
+triton==3.6.0 ; platform_system == "Linux" and platform_machine == "x86_64"
+nvidia-nvshmem-cu13==3.4.5 ; platform_system == "Linux" and platform_machine == "x86_64"

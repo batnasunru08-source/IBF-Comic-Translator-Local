@@ -1,190 +1,259 @@
 # IBF Comic Translator Local
 
-## Проект состоит из двух частей:
-Chrome extension — находит изображения на странице, добавляет кнопку IBF, отправляет картинку на локальный API и подставляет переведённую версию обратно.
+Локальный переводчик комиксов из браузера.
 
-Локальный FastAPI-сервер — получает изображение, распознаёт текст, переводит его и рендерит перевод поверх исходного изображения. FastAPI подходит для такого API-сервера и поддерживает загрузку файлов через UploadFile.
+Проект состоит из двух частей:
+- `extension/` — Chrome extension, добавляет кнопку `IBF` на изображения на странице, отправляет изображение на локальный API и подставляет переведенную версию обратно.
+- `server/` — FastAPI сервер, который делает OCR, перевод и рендер текста поверх исходной картинки.
 
-## Для OCR используются:
-EasyOCR — для английского и большинства неяпонских языков; у него есть lang_list и поддержка GPU через параметр gpu.
+Текущий стек:
+- OCR: `PaddleOCR`
+- Translation: `tencent/HY-MT1.5-7B`
+- Runtime: `WSL2/Linux + NVIDIA GPU`
 
-MangaOCR — для японского текста, особенно в манге.
+## Поддерживаемый сценарий
 
-Для перевода используется tencent/HY-MT1.5-7B. Согласно карточке модели, HY-MT 1.5 поддерживает взаимный перевод между 33 языками, а для transformers рекомендуемая версия — 4.56.0.
+README описывает только один поддерживаемый вариант запуска:
+- Windows с `WSL2`
+- сервер работает внутри `WSL/Linux`
+- OCR и перевод работают на `GPU`
+- Chrome extension загружается в Chrome на Windows и обращается к `http://127.0.0.1:8000`
+
+Windows-native запуск в этом README не описывается.
+
+## Требования
+
+Нужно:
+- Windows 11 или Windows 10 с `WSL2`
+- NVIDIA GPU
+- рабочий `nvidia-smi` внутри `WSL`
+- Python `3.12`
+- Google Chrome
+
+Перед установкой проверьте в `WSL`:
+
+```bash
+nvidia-smi
+python3 --version
+```
 
 ## Установка
-1. Клонирование проекта
-```
+
+Клонируйте проект:
+
+```bash
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
-cd IBF-Comic-Translator-Local-main/server
+cd IBF-Comic-Translator-Local
 ```
-2. Создание виртуального окружения
-- Linux
+
+Установите системные пакеты в `WSL`:
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv python3-dev build-essential libgl1 libglib2.0-0
 ```
-python -m venv .venv
+
+Создайте виртуальное окружение:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 ```
-- Windows PowerShell
-```
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-3. Установка базовых зависимостей
-```
-pip install -r requirements.txt
-```
-________________________________________
-## Установка PyTorch
-### Вариант 1. CPU
- Если у вас нет CUDA-совместимой NVIDIA GPU, можно использовать CPU-режим.
-```
-pip install torch torchvision torchaudio
-```
-Проверка:
-```
-python -c "import torch; print(torch.cuda.is_available())"
-```
-Ожидаемый результат:
-```
-False
-```
-________________________________________
-### Вариант 2. GPU (CUDA)
-Если у вас есть NVIDIA GPU, установите CUDA-сборку PyTorch.
 
-Пример установки:
-```
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-```
-Проверка:
-```
-python -c "import torch; print(torch.cuda.is_available()); print(torch.version.cuda); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no gpu')"
-```
-Ожидаемый результат:
-```
-•	True
-•	версия CUDA, например 12.8
-•	название вашей видеокарты
-```
-________________________________________
-- Опционально: bitsandbytes для 4-bit загрузки модели
+## Установка Python-зависимостей
 
-Если вы хотите уменьшить потребление VRAM при загрузке HY-MT1.5-7B, установите bitsandbytes:
+Из папки `server/`:
+
+```bash
+cd server
+bash install-wsl-gpu.sh
 ```
-pip install -U "bitsandbytes>=0.46.1"
+
+Этот скрипт:
+- ставит базовые зависимости сервера
+- ставит `paddlepaddle-gpu`
+- ставит совместимый `torch`
+- выравнивает CUDA runtime-пакеты для текущего `cu130` стека
+
+Из-за текущих upstream wheel-метаданных `pip check` может ругаться на часть CUDA runtime-пакетов. Для этого проекта это не главный критерий. Важнее, чтобы проходили импорты `torch` и `paddle`, и сервер стартовал.
+
+## Проверка GPU
+
+Проверьте из активированного `.venv`:
+
+```bash
+python - <<'PY'
+import torch, paddle
+print("torch:", torch.__version__, torch.cuda.is_available(), torch.version.cuda)
+print("paddle:", paddle.__version__, paddle.device.is_compiled_with_cuda(), paddle.device.cuda.device_count())
+PY
 ```
-Если bitsandbytes не установлен, проект может использовать обычную загрузку модели без 4-bit-квантования.
-________________________________________
+
+Ожидаемо:
+- `torch.cuda.is_available()` -> `True`
+- `paddle.device.is_compiled_with_cuda()` -> `True`
+- `paddle.device.cuda.device_count()` -> `>= 1`
+
 ## Запуск сервера
-Из папки server:
+
+Из папки `server/`:
+
+```bash
+source ../.venv/bin/activate
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
-```
-Проверка:
-```
+
+Проверьте health endpoint:
+
+```bash
 curl http://127.0.0.1:8000/health
 ```
+
 Ожидаемый ответ:
-```
+
+```json
 {"ok": true}
 ```
-________________________________________
-## Загрузка расширения в Chrome
-1.	Откройте chrome://extensions/
-2.	Включите Режим разработчика
-3.	Нажмите Загрузить распакованное расширение
-4.	Выберите папку extension
 
-После этого на изображениях на странице должна появиться кнопка IBF.
-________________________________________
-- Настройки расширения
+Во время старта полезно увидеть:
+- `[STARTUP] Translator warm-up complete`
+- `[STARTUP] PaddleOCR en ready`
+- `[OCR] ... paddle_gpu_available=True`
 
-В popup расширения доступны:
-```
-•	Включить / выключить расширение
-•	Режим отображения
-o	replace — заменить исходное изображение
-o	overlay — показать перевод поверх оригинала
-•	Язык текста (OCR)
-•	Язык перевода
-```
-Рекомендуемые OCR-режимы
-```
-•	en, ru, de, fr, es, ko, ch_sim, ch_tra → EasyOCR
-•	ja → MangaOCR
-```
-________________________________________
-## Как включать CPU или GPU
-- Проект выбирает устройство автоматически:
-```
-•	если torch.cuda.is_available() возвращает True, OCR и перевод пытаются использовать GPU
-•	если False, используется CPU
-```
-- Практически это означает:
-```
-•	установили CPU-версию PyTorch → проект работает на CPU
-•	установили CUDA-версию PyTorch → проект работает на GPU
-```
-- Проверка текущего режима
-```
-python -c "import torch; print(torch.cuda.is_available())"
-```
-- Принудительно CPU
-```
-Установите CPU-сборку PyTorch и не ставьте CUDA-колёса.
-```
-- Принудительно GPU
-```
-Установите CUDA-сборку PyTorch и при необходимости bitsandbytes.
-```
-________________________________________
-## Использование переводчика
-Модель tencent/HY-MT1.5-7B предназначена именно для перевода.
+## Установка Chrome extension
 
-Рекомендуемый шаблон промпта:
-```
-Translate the following segment into {target_language}, without additional explanation.
+В Chrome:
 
-{source_text}
-```
-________________________________________
-## Ограничения текущего MVP
-```
-•	OCR может резать один speech bubble на несколько отдельных строк
-•	на сложных комиксах возможна фрагментация текста
-•	MangaOCR хорошо подходит для японского текста, но может потребовать дополнительной логики группировки
-•	некоторые сайты не дают скачать картинку напрямую по URL; для них лучше использовать upload-режим
-•	HY-MT1.5-7B — тяжёлая модель, поэтому для GPU желательно 4-bit загрузка или достаточный объём VRAM
-```
-________________________________________
-## Полезные команды для диагностики
-- Проверка EasyOCR
-```
-python -c "import easyocr; print('easyocr ok')"
-```
-- Проверка MangaOCR
-```
-python -c "from manga_ocr import MangaOcr; print('manga_ocr ok')"
-```
-- Проверка PyTorch / CUDA
-```
-python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda)"
-```
-- Проверка bitsandbytes
-```
-python -c "import bitsandbytes as bnb; print(bnb.__version__)"
-```
-________________________________________
-## Планы по улучшению
-```
-•	автоопределение языка текста
-•	лучшее объединение строк в speech bubbles
-•	кэширование результатов OCR и перевода
-•	ручное редактирование перевода перед рендером
-•	поддержка большего количества сайтов и режимов вставки изображения
-•	улучшенный японский pipeline
+1. Откройте `chrome://extensions/`
+2. Включите `Developer mode`
+3. Нажмите `Load unpacked`
+4. Выберите папку `extension/`
+
+После загрузки extension:
+- откройте popup расширения
+- убедитесь, что extension включено
+- при необходимости выберите `OCR language` и `Target language`
+
+Если вы меняли файлы в `extension/`, перезагрузите extension на странице `chrome://extensions/`.
+
+## Как это работает
+
+Основной путь сейчас такой:
+
+1. Extension сама скачивает исходную картинку из браузерного контекста.
+2. Если картинка слишком большая, extension уменьшает ее перед upload.
+3. Extension отправляет файл на `POST /translate-upload`.
+4. Сервер делает OCR, перевод и рендерит итоговую картинку.
+5. Extension получает результат и подставляет переведенную версию на страницу.
+
+`/translate-from-url` остается запасным путем, если upload-first путь не сработал.
+
+## Настройки расширения
+
+В popup доступны:
+- включение и выключение extension
+- `replace` — заменить исходное изображение
+- `overlay` — показать перевод поверх оригинала
+- язык OCR
+- язык перевода
+
+## API
+
+Основные эндпоинты:
+
+- `GET /health`
+- `POST /translate-upload`
+- `POST /translate-from-url`
+- `GET /results/{filename}`
+
+### `POST /translate-upload`
+
+Multipart form-data:
+- `file`
+- `source_ocr_lang`
+- `target_lang`
+
+### `POST /translate-from-url`
+
+JSON body:
+
+```json
+{
+  "image_url": "https://example.com/page.jpg",
+  "page_url": "https://example.com/chapter/1",
+  "referer": "https://example.com/chapter/1",
+  "source_ocr_lang": "en",
+  "target_lang": "Russian"
+}
 ```
 
-## Лицензия
-Проект распространяется под лицензией MIT.
+## Поддерживаемые OCR language значения
 
+Основные значения:
+- `en`
+- `ru`
+- `de`
+- `fr`
+- `es`
+- `ko`
+- `ja`
+- `ch_sim`
+- `ch_tra`
+
+## Диагностика
+
+Проверка `torch`:
+
+```bash
+python - <<'PY'
+import torch
+print(torch.__version__)
+print(torch.cuda.is_available())
+print(torch.version.cuda)
+PY
+```
+
+Проверка `paddle`:
+
+```bash
+python - <<'PY'
+import paddle
+print(paddle.__version__)
+print(paddle.device.is_compiled_with_cuda())
+print(paddle.device.cuda.device_count())
+PY
+```
+
+Проверка `PaddleOCR`:
+
+```bash
+python - <<'PY'
+from app.ocr import get_paddleocr_engine
+ocr = get_paddleocr_engine("en")
+print(type(ocr).__name__)
+PY
+```
+
+Если OCR не находит текст:
+- смотрите `debug_dir` в `meta`
+- откройте `grouped_blocks.png`
+- проверьте `crop_*.png`
+
+## Ограничения
+
+- `HY-MT1.5-7B` тяжелая модель и заметно влияет на общую задержку
+- сложные страницы манги могут давать шумные OCR-блоки
+- некоторые сайты плохо отдают исходные изображения по прямому URL
+- на очень больших страницах рендер и OCR все еще занимают заметное время
+
+## Структура проекта
+
+```text
+extension/
+server/
+README.md
+```
+
+## License
+
+MIT

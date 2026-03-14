@@ -1,3 +1,7 @@
+# Common project dependencies.
+# Install one runtime-specific file after this one:
+#   pip install -r requirements-cpu.txt
+#   pip install -r requirements-linux-gpu.txt
 fastapi>=0.116.0
 uvicorn[standard]>=0.35.0
 python-multipart>=0.0.20
@@ -7,5 +11,4 @@ pillow>=11.0.0
 opencv-python>=4.11.0
 transformers==4.56.0
 accelerate>=1.10.0
-easyocr>=1.7.2
-manga-ocr>=0.1.14
+paddleocr>=3.4.0

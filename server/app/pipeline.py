@@ -12,7 +12,6 @@ from PIL import Image
 from .models import TextBlock
 from .ocr import recognize_blocks
 from .renderer import inpaint_text, render_translations
-from .translator import get_translator
 from .utils import sha1_bytes
 
 
@@ -121,6 +120,8 @@ def process_image_bytes(
     Image.fromarray(debug_img).save(debug_dir / "grouped_blocks.png")
     
     
+    from .translator import get_translator
+
     translator = get_translator()
 
     texts = [block.source_text for block in blocks]

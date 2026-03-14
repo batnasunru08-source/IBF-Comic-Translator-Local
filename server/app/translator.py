@@ -10,12 +10,18 @@ logger = logging.getLogger(__name__)
 MODEL_ID = "tencent/HY-MT1.5-7B"
 # Для более высокой скорости можно попробовать:
 # MODEL_ID = "tencent/HY-MT1.5-1.8B"
+# MODEL_ID = "tencent/HY-MT1.5-7B"
+# MODEL_ID = "tencent/HY-MT1.5-7B-FP8"
 
 
 class HyMtTranslator:
     def __init__(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
         self.model = self._load_model()
+        if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
+            self.model.generation_config.temperature = None
+            self.model.generation_config.top_p = None
+            self.model.generation_config.top_k = None
 
     def _load_model(self):
         common_kwargs = {
@@ -37,14 +43,14 @@ class HyMtTranslator:
                 return AutoModelForCausalLM.from_pretrained(
                     MODEL_ID,
                     quantization_config=quantization_config,
-                    torch_dtype=torch.bfloat16,
+                    dtype=torch.bfloat16,
                     **common_kwargs,
                 )
             except Exception as exc:
                 logger.warning("4-bit load failed, fallback to non-quantized CUDA load: %s", exc)
                 return AutoModelForCausalLM.from_pretrained(
                     MODEL_ID,
-                    torch_dtype=torch.float16,
+                    dtype=torch.float16,
                     **common_kwargs,
                 )
 
@@ -88,7 +94,8 @@ class HyMtTranslator:
             padding=True,
             truncation=True,
         )
-
+        model_inputs.pop("token_type_ids", None)
+        
         device = self._get_model_input_device()
         model_inputs = {k: v.to(device) for k, v in model_inputs.items()}
         input_lengths = model_inputs["attention_mask"].sum(dim=1).tolist()
