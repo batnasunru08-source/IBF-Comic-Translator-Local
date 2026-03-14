@@ -1,7 +1,8 @@
 -r requirements.txt
 
-# WSL2/Linux GPU setup.
-# Use `bash install-wsl-gpu.sh` instead of `pip install -r requirements-linux-gpu.txt`
+# Linux x86_64 + NVIDIA GPU setup.
+# WSL2 uses the same dependency flow because it runs the Linux server stack.
+# Use `bash install-linux-gpu.sh` instead of `pip install -r requirements-linux-gpu.txt`
 # if you need both PaddleOCR and PyTorch on GPU in one environment.
 #
 # Reason: upstream wheel metadata currently conflicts on exact
@@ -9,7 +10,7 @@
 --extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu130/
 --extra-index-url https://download.pytorch.org/whl/cu130
 
-# Install torch separately with `--no-deps` in `install-wsl-gpu.sh`.
+# Install torch separately with `--no-deps` in `install-linux-gpu.sh`.
 paddlepaddle-gpu==3.3.0 ; platform_system == "Linux" and platform_machine == "x86_64"
 bitsandbytes>=0.46.1 ; platform_system == "Linux" and platform_machine == "x86_64"
 

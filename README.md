@@ -9,32 +9,39 @@
 Текущий стек:
 - OCR: `PaddleOCR`
 - Translation: `tencent/HY-MT1.5-7B`
-- Runtime: `WSL2/Linux + NVIDIA GPU`
+- Runtime: `Linux x86_64` или `WSL2`
 
-## Поддерживаемый сценарий
+## Поддерживаемые сценарии
 
-README описывает только один поддерживаемый вариант запуска:
-- Windows с `WSL2`
-- сервер работает внутри `WSL/Linux`
-- OCR и перевод работают на `GPU`
-- Chrome extension загружается в Chrome на Windows и обращается к `http://127.0.0.1:8000`
+README описывает три сценария:
 
-Windows-native запуск в этом README не описывается.
+- основной: обычный `Linux x86_64 + NVIDIA GPU`
+- совместимый: `Windows + WSL2 + NVIDIA GPU`
+- fallback: `Linux x86_64` или `WSL2` без GPU, только `CPU`
+
+`WSL2` здесь рассматривается как частный случай Linux-окружения. Windows-native запуск в этом README не описывается.
 
 ## Требования
 
 Нужно:
-- Windows 11 или Windows 10 с `WSL2`
-- NVIDIA GPU
-- рабочий `nvidia-smi` внутри `WSL`
+- `Linux x86_64` или `WSL2`
 - Python `3.12`
-- Google Chrome
+- Google Chrome или Chromium
 
-Перед установкой проверьте в `WSL`:
+Для GPU-режима дополнительно нужно:
+- NVIDIA GPU
+- рабочий `nvidia-smi`
+
+Перед установкой проверьте базовое окружение:
+
+```bash
+python3 --version
+```
+
+Если планируется GPU-запуск, проверьте еще и:
 
 ```bash
 nvidia-smi
-python3 --version
 ```
 
 ## Установка
@@ -46,7 +53,7 @@ git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local
 ```
 
-Установите системные пакеты в `WSL`:
+Установите системные пакеты:
 
 ```bash
 sudo apt update
@@ -64,18 +71,39 @@ source .venv/bin/activate
 
 Из папки `server/`:
 
+### GPU
+
 ```bash
 cd server
-bash install-wsl-gpu.sh
+bash install-linux-gpu.sh
 ```
 
-Этот скрипт:
+`install-linux-gpu.sh`:
 - ставит базовые зависимости сервера
 - ставит `paddlepaddle-gpu`
 - ставит совместимый `torch`
 - выравнивает CUDA runtime-пакеты для текущего `cu130` стека
 
+`install-wsl-gpu.sh` оставлен как совместимый alias и вызывает тот же сценарий установки.
+
 Из-за текущих upstream wheel-метаданных `pip check` может ругаться на часть CUDA runtime-пакетов. Для этого проекта это не главный критерий. Важнее, чтобы проходили импорты `torch` и `paddle`, и сервер стартовал.
+
+### CPU
+
+Если GPU нет, ставьте CPU-стек:
+
+```bash
+cd server
+python -m pip install -U pip setuptools wheel
+python -m pip install -r requirements-cpu.txt
+```
+
+`requirements-cpu.txt`:
+- ставит базовые зависимости сервера
+- ставит CPU-версию `paddlepaddle`
+- ставит обычный `torch`
+
+CPU-режим поддерживается, но будет заметно медленнее GPU-варианта, особенно на больших страницах и на этапе перевода.
 
 ## Проверка GPU
 
@@ -93,6 +121,24 @@ PY
 - `torch.cuda.is_available()` -> `True`
 - `paddle.device.is_compiled_with_cuda()` -> `True`
 - `paddle.device.cuda.device_count()` -> `>= 1`
+
+## Проверка CPU
+
+Если вы запускаете без GPU, достаточно, чтобы импорты проходили и оба фреймворка работали в CPU-режиме:
+
+```bash
+python - <<'PY'
+import torch, paddle
+print("torch:", torch.__version__, torch.cuda.is_available(), torch.version.cuda)
+print("paddle:", paddle.__version__, paddle.device.is_compiled_with_cuda(), paddle.device.cuda.device_count())
+PY
+```
+
+Ожидаемо:
+- `torch.cuda.is_available()` -> `False`
+- `paddle.device.is_compiled_with_cuda()` -> `False`
+  или `True`, но без доступных GPU устройств
+- `paddle.device.cuda.device_count()` -> `0`
 
 ## Запуск сервера
 
@@ -118,11 +164,12 @@ curl http://127.0.0.1:8000/health
 Во время старта полезно увидеть:
 - `[STARTUP] Translator warm-up complete`
 - `[STARTUP] PaddleOCR en ready`
-- `[OCR] ... paddle_gpu_available=True`
+- `[OCR] ... paddle_gpu_available=True` для GPU
+- `[OCR] ... paddle_gpu_available=False` для CPU
 
 ## Установка Chrome extension
 
-В Chrome:
+В Chrome или Chromium:
 
 1. Откройте `chrome://extensions/`
 2. Включите `Developer mode`
@@ -135,6 +182,8 @@ curl http://127.0.0.1:8000/health
 - при необходимости выберите `OCR language` и `Target language`
 
 Если вы меняли файлы в `extension/`, перезагрузите extension на странице `chrome://extensions/`.
+
+Для `WSL2` сервер обычно доступен из Chrome на Windows по `http://127.0.0.1:8000`.
 
 ## Как это работает
 
@@ -160,7 +209,6 @@ curl http://127.0.0.1:8000/health
 ## API
 
 Основные эндпоинты:
-
 - `GET /health`
 - `POST /translate-upload`
 - `POST /translate-from-url`
@@ -245,6 +293,7 @@ PY
 - сложные страницы манги могут давать шумные OCR-блоки
 - некоторые сайты плохо отдают исходные изображения по прямому URL
 - на очень больших страницах рендер и OCR все еще занимают заметное время
+- в CPU-режиме OCR и перевод работают существенно медленнее, чем на GPU
 
 ## Структура проекта
 
