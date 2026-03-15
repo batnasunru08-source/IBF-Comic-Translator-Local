@@ -303,14 +303,13 @@ server/
 README.md
 ```
 
-## License
 
-MIT
 
-## Optional PatchMatch Inpainting
+## Опционально можете использовать 'PatchMatch'
 
-PatchMatch is an optional non-neural inpainting backend for textured backgrounds.
-It is not installed by default.
+'PatchMatch' — это дополнительная не нейронная функция заполнения пропущенных областей для текстурированных фонов. 
+
+Она не устанавливается по умолчанию.
 
 Linux or WSL2:
 
@@ -322,7 +321,11 @@ export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Notes:
-- The native library is installed to `server/data/libs/libpatchmatch.so`
-- You can override the library path with `COMIC_TRANSLATOR_PATCHMATCH_LIB`
-- If PatchMatch is unavailable, the server falls back to `telea`
+Примечания:
+- Нативная библиотека устанавливается в 'server/data/libs/libpatchmatch.so'
+- Вы можете переопределить путь к библиотеке с помощью 'COMIC_TRANSLATOR_PATCHMATCH_LIB'
+- Если PatchMatch недоступен, сервер переключается на 'telea'
+
+## License
+
+MIT
