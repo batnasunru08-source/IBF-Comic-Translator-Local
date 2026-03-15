@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import urlsplit
 import warnings
 
@@ -75,6 +76,7 @@ def health():
 
 @app.post("/translate-from-url")
 def translate_from_url(payload: TranslateFromUrlRequest, request: Request):
+    request_started = perf_counter()
     headers = {
         "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         "User-Agent": (
@@ -91,8 +93,10 @@ def translate_from_url(payload: TranslateFromUrlRequest, request: Request):
             headers["Origin"] = f"{origin.scheme}://{origin.netloc}"
 
     try:
+        download_started = perf_counter()
         response = requests.get(payload.image_url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
         response.raise_for_status()
+        download_ms = round((perf_counter() - download_started) * 1000)
     except Exception as exc:
         print(
             f"[DOWNLOAD] failed image_url={payload.image_url!r} "
@@ -105,6 +109,12 @@ def translate_from_url(payload: TranslateFromUrlRequest, request: Request):
         RESULTS_DIR,
         source_ocr_lang=payload.source_ocr_lang,
         target_lang=payload.target_lang,
+    )
+    total_ms = round((perf_counter() - request_started) * 1000)
+    print(
+        "[API] translate-from-url completed "
+        f"download_ms={download_ms} total_ms={total_ms} "
+        f"image_url={payload.image_url!r}"
     )
     return {
         "ok": True,
@@ -120,6 +130,7 @@ async def translate_upload(
     source_ocr_lang: str = Form("en"),
     target_lang: str = Form("Russian"),
 ):
+    request_started = perf_counter()
     content = await file.read()
     out_path, meta = process_image_bytes(
         content,
@@ -128,6 +139,12 @@ async def translate_upload(
         target_lang=target_lang,
     )
     base_url = str(request.base_url).rstrip("/")
+    total_ms = round((perf_counter() - request_started) * 1000)
+    print(
+        "[API] translate-upload completed "
+        f"size_bytes={len(content)} total_ms={total_ms} "
+        f"source_ocr_lang={source_ocr_lang!r} target_lang={target_lang!r}"
+    )
     return {
         "ok": True,
         "result_url": f"{base_url}/results/{out_path.name}",

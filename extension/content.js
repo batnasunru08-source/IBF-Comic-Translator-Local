@@ -1,6 +1,7 @@
 const STATES = new Map();
 const PROCESSED_ATTR = "data-comic-translator-bound";
 const MIN_SIDE = 80;
+const MAX_CAPTURE_DIMENSION = 2200;
 
 const SETTINGS = {
   enabled: true,
@@ -33,6 +34,154 @@ function looksLikeImage(img) {
   const height = img.clientHeight || img.naturalHeight || 0;
 
   return isSupportedImageUrl(src) && width >= MIN_SIDE && height >= MIN_SIDE;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function waitForImageReady(img) {
+  if (img.complete && (img.naturalWidth || img.width || img.clientWidth)) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const onLoad = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("image load failed"));
+    };
+    const cleanup = () => {
+      img.removeEventListener("load", onLoad);
+      img.removeEventListener("error", onError);
+    };
+
+    img.addEventListener("load", onLoad, { once: true });
+    img.addEventListener("error", onError, { once: true });
+  });
+}
+
+function guessCanvasMime(imageUrl) {
+  const url = String(imageUrl || "").toLowerCase();
+  if (/\.png(\?|#|$)/i.test(url)) {
+    return "image/png";
+  }
+  if (/\.webp(\?|#|$)/i.test(url)) {
+    return "image/webp";
+  }
+  return "image/jpeg";
+}
+
+function getVisibleCaptureRect(img) {
+  const rect = img.getBoundingClientRect();
+  if (rect.width < MIN_SIDE || rect.height < MIN_SIDE) {
+    return null;
+  }
+
+  const fullyVisible =
+    rect.left >= 0 &&
+    rect.top >= 0 &&
+    rect.right <= window.innerWidth &&
+    rect.bottom <= window.innerHeight;
+  if (!fullyVisible) {
+    return null;
+  }
+
+  const left = rect.left;
+  const top = rect.top;
+  const width = rect.width;
+  const height = rect.height;
+
+  if (width < MIN_SIDE || height < MIN_SIDE) {
+    return null;
+  }
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    devicePixelRatio: window.devicePixelRatio || 1
+  };
+}
+
+async function captureImageDataFromDom(img) {
+  const started = performance.now();
+
+  try {
+    await waitForImageReady(img);
+    if (typeof img.decode === "function") {
+      try {
+        await img.decode();
+      } catch {
+        // Ignore decode errors; drawImage can still succeed for already loaded images.
+      }
+    }
+
+    const naturalWidth = img.naturalWidth || img.width || img.clientWidth;
+    const naturalHeight = img.naturalHeight || img.height || img.clientHeight;
+    if (!naturalWidth || !naturalHeight) {
+      return null;
+    }
+
+    const maxSide = Math.max(naturalWidth, naturalHeight);
+    const scale = maxSide > MAX_CAPTURE_DIMENSION ? MAX_CAPTURE_DIMENSION / maxSide : 1;
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      return null;
+    }
+
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(img, 0, 0, width, height);
+
+    const mime = guessCanvasMime(getImageUrl(img));
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (value) => {
+          if (value) {
+            resolve(value);
+            return;
+          }
+          reject(new Error("canvas.toBlob returned null"));
+        },
+        mime,
+        mime === "image/png" ? undefined : 0.92
+      );
+    });
+
+    const dataUrl = await blobToDataUrl(blob);
+    return {
+      dataUrl,
+      mime,
+      width,
+      height,
+      bytes: blob.size,
+      elapsedMs: Math.round(performance.now() - started)
+    };
+  } catch (error) {
+    const reason = `${error?.name || "Error"}: ${error?.message || String(error)}`;
+    console.info("[Comic Translator] DOM image capture unavailable, falling back to network fetch:", {
+      imageUrl: getImageUrl(img),
+      reason
+    });
+    return null;
+  }
 }
 
 async function loadSettings() {
@@ -359,16 +508,33 @@ function createButton(img) {
     }
 
     const originalText = button.textContent;
+    const originalDisplay = button.style.display;
     button.disabled = true;
     button.textContent = "...";
 
     try {
+      const domImage = await captureImageDataFromDom(img);
+      const visibleCapture = !domImage ? getVisibleCaptureRect(img) : null;
+      if (visibleCapture) {
+        button.style.display = "none";
+      }
       const response = await chrome.runtime.sendMessage({
         type: "translate-image",
         imageUrl,
         pageUrl: window.location.href,
         sourceOcrLang: SETTINGS.sourceOcrLang,
-        targetLang: SETTINGS.targetLang
+        targetLang: SETTINGS.targetLang,
+        domImageDataUrl: domImage?.dataUrl || "",
+        domImageInfo: domImage
+          ? {
+              mime: domImage.mime,
+              width: domImage.width,
+              height: domImage.height,
+              bytes: domImage.bytes,
+              elapsedMs: domImage.elapsedMs
+            }
+          : null,
+        visibleCapture
       });
 
       if (!response?.ok || !response.result_url) {
@@ -404,6 +570,7 @@ function createButton(img) {
       console.error("[Comic Translator] click error:", error);
       alert(`Ошибка перевода изображения: ${String(error)}`);
     } finally {
+      button.style.display = originalDisplay;
       button.disabled = false;
       button.textContent = originalText;
       updateButtonPosition(img);

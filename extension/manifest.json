@@ -4,7 +4,8 @@
   "version": "0.3.0",
   "description": "Переводит изображения на странице браузера",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>",

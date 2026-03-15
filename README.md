@@ -13,9 +13,13 @@
 
 ## Поддерживаемые сценарии
 
+README описывает три сценария:
+
 - основной: обычный `Linux x86_64 + NVIDIA GPU`
 - совместимый: `Windows + WSL2 + NVIDIA GPU`
 - fallback: `Linux x86_64` или `WSL2` без GPU, только `CPU`
+
+`WSL2` здесь рассматривается как частный случай Linux-окружения. Windows-native запуск в этом README не описывается.
 
 ## Требования
 
@@ -81,6 +85,8 @@ bash install-linux-gpu.sh
 - выравнивает CUDA runtime-пакеты для текущего `cu130` стека
 
 `install-wsl-gpu.sh` оставлен как совместимый alias и вызывает тот же сценарий установки.
+
+Из-за текущих upstream wheel-метаданных `pip check` может ругаться на часть CUDA runtime-пакетов. Для этого проекта это не главный критерий. Важнее, чтобы проходили импорты `torch` и `paddle`, и сервер стартовал.
 
 ### CPU
 
@@ -175,7 +181,21 @@ curl http://127.0.0.1:8000/health
 - убедитесь, что extension включено
 - при необходимости выберите `OCR language` и `Target language`
 
+Если вы меняли файлы в `extension/`, перезагрузите extension на странице `chrome://extensions/`.
+
 Для `WSL2` сервер обычно доступен из Chrome на Windows по `http://127.0.0.1:8000`.
+
+## Как это работает
+
+Основной путь сейчас такой:
+
+1. Extension сама скачивает исходную картинку из браузерного контекста.
+2. Если картинка слишком большая, extension уменьшает ее перед upload.
+3. Extension отправляет файл на `POST /translate-upload`.
+4. Сервер делает OCR, перевод и рендерит итоговую картинку.
+5. Extension получает результат и подставляет переведенную версию на страницу.
+
+`/translate-from-url` остается запасным путем, если upload-first путь не сработал.
 
 ## Настройки расширения
 
@@ -262,6 +282,11 @@ print(type(ocr).__name__)
 PY
 ```
 
+Если OCR не находит текст:
+- смотрите `debug_dir` в `meta`
+- откройте `grouped_blocks.png`
+- проверьте `crop_*.png`
+
 ## Ограничения
 
 - `HY-MT1.5-7B` тяжелая модель и заметно влияет на общую задержку
@@ -270,8 +295,34 @@ PY
 - на очень больших страницах рендер и OCR все еще занимают заметное время
 - в CPU-режиме OCR и перевод работают существенно медленнее, чем на GPU
 
+## Структура проекта
 
+```text
+extension/
+server/
+README.md
+```
 
 ## License
 
 MIT
+
+## Optional PatchMatch Inpainting
+
+PatchMatch is an optional non-neural inpainting backend for textured backgrounds.
+It is not installed by default.
+
+Linux or WSL2:
+
+```bash
+sudo apt install -y build-essential git pkg-config libopencv-dev
+cd server
+bash install-patchmatch.sh
+export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Notes:
+- The native library is installed to `server/data/libs/libpatchmatch.so`
+- You can override the library path with `COMIC_TRANSLATOR_PATCHMATCH_LIB`
+- If PatchMatch is unavailable, the server falls back to `telea`
