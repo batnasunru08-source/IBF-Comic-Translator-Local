@@ -226,7 +226,7 @@ def group_blocks(
         for right_index in range(left_index + 1, len(blocks)):
             right_block = blocks[right_index]
             _, right_y1, _, _ = right_block.bounds
-            if right_y1 - left_y2 > 140:
+            if right_y1 - left_y2 > max(140, int(image_rgb.shape[0] * 0.07)):
                 break
 
             if _blocks_are_neighbors(
@@ -349,12 +349,44 @@ def process_image_bytes(
     translator_started = perf_counter()
     translator = get_translator()
 
+    def _looks_translatable(text: str) -> bool:
+        """Фильтрует мусор: одиночные символы, коды, артефакты OCR.
+
+        Правила (все должны выполняться):
+        - минимум 2 символа
+        - доля буквенно-цифровых символов >= 40%
+        - минимум 2 буквы (одна буква + спецсимвол типа "T#" — мусор)
+        - не состоит целиком из повторяющегося символа (напр. "####")
+        """
+        text = (text or "").strip()
+        if len(text) < 2:
+            return False
+        alnum = sum(c.isalnum() for c in text)
+        if alnum / len(text) < 0.40:
+            return False
+        # Требуем минимум 2 буквы — иначе "T#", "A1", "Z." — мусор
+        letters = sum(c.isalpha() for c in text)
+        if letters < 2:
+            return False
+        # Повторяющийся символ: "###", "...", "___" и т.п.
+        if len(set(text.replace(" ", ""))) <= 1:
+            return False
+        return True
+
     texts = [block.source_text for block in blocks]
     for i, text in enumerate(texts, start=1):
-        print(f"[PIPELINE] source[{i}]: {text!r}")
+        status = "OK" if _looks_translatable(text) else "SKIP"
+        print(f"[PIPELINE] source[{i}] [{status}]: {text!r}")
+
+    # Отправляем на перевод только осмысленные блоки,
+    # для мусора сразу подставляем пустую строку
+    texts_to_translate = [t if _looks_translatable(t) else "" for t in texts]
+    n_skip = sum(1 for t in texts_to_translate if not t)
+    if n_skip:
+        print(f"[PIPELINE] skipping {n_skip}/{len(texts)} blocks before translation")
 
     translation_started = perf_counter()
-    translated_texts = translator.translate_batch(texts, target_language=target_lang)
+    translated_texts = translator.translate_batch(texts_to_translate, target_language=target_lang)
     translation_ms = round((perf_counter() - translation_started) * 1000)
 
     for i, (block, translated) in enumerate(zip(blocks, translated_texts), start=1):
@@ -362,11 +394,11 @@ def process_image_bytes(
         print(f"[PIPELINE] translated[{i}]: {translated!r}")
 
     inpaint_started = perf_counter()
-    cleaned = inpaint_text(np_image, blocks)
+    cleaned, block_masks = inpaint_text(np_image, blocks)
     inpaint_ms = round((perf_counter() - inpaint_started) * 1000)
 
     render_started = perf_counter()
-    rendered = render_translations(cleaned, blocks, original_image=np_image)
+    rendered = render_translations(cleaned, blocks, original_image=np_image, block_masks=block_masks)
     render_ms = round((perf_counter() - render_started) * 1000)
 
     save_started = perf_counter()

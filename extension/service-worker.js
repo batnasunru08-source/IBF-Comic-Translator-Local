@@ -10,29 +10,18 @@ function roundMs(value) {
 
 function dataUrlToBlob(dataUrl) {
   const match = /^data:([^;,]+)?(?:;base64)?,(.*)$/i.exec(String(dataUrl || ""));
-  if (!match) {
-    throw new Error("invalid data URL");
-  }
-
+  if (!match) throw new Error("invalid data URL");
   const mime = match[1] || "application/octet-stream";
   const binary = atob(match[2] || "");
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new Blob([bytes], { type: mime });
 }
 
 function rememberCacheValue(cache, key, value) {
-  if (cache.has(key)) {
-    cache.delete(key);
-  }
+  if (cache.has(key)) cache.delete(key);
   cache.set(key, value);
-
-  while (cache.size > MAX_CACHE_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
-    cache.delete(oldestKey);
-  }
+  while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
 }
 
 function makeTranslationCacheKey(message) {
@@ -46,23 +35,13 @@ function makeTranslationCacheKey(message) {
 async function readJsonResponse(response) {
   const text = await response.text();
   let data = {};
-
   if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { detail: text };
-    }
+    try { data = JSON.parse(text); }
+    catch { data = { detail: text }; }
   }
-
   if (!response.ok) {
-    return {
-      ok: false,
-      error: data?.detail || data?.error || `HTTP ${response.status}`,
-      status: response.status
-    };
+    return { ok: false, error: data?.detail || data?.error || `HTTP ${response.status}`, status: response.status };
   }
-
   return data;
 }
 
@@ -78,7 +57,6 @@ async function requestTranslateFromUrl(message) {
       target_lang: message.targetLang || "Russian"
     })
   });
-
   return readJsonResponse(response);
 }
 
@@ -87,54 +65,33 @@ async function fetchSourceImageBlob(message) {
     method: "GET",
     referrer: message.pageUrl || undefined,
     referrerPolicy: "strict-origin-when-cross-origin",
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
-    }
+    headers: { Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8" }
   };
 
   let lastError = null;
   for (const cacheMode of ["force-cache", "default"]) {
     try {
-      const response = await fetch(message.imageUrl, {
-        ...requestOptions,
-        cache: cacheMode
-      });
-
-      if (!response.ok) {
-        throw new Error(`source image fetch failed: HTTP ${response.status}`);
-      }
-
+      const response = await fetch(message.imageUrl, { ...requestOptions, cache: cacheMode });
+      if (!response.ok) throw new Error(`source image fetch failed: HTTP ${response.status}`);
       const blob = await response.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error("source image fetch returned an empty blob");
-      }
-
-      return {
-        blob,
-        cacheMode
-      };
+      if (!blob || blob.size === 0) throw new Error("source image fetch returned an empty blob");
+      return { blob, cacheMode };
     } catch (error) {
       lastError = error;
       if (cacheMode === "force-cache") {
         console.info("[Comic Translator] source fetch via browser cache failed, retrying network fetch:", {
-          imageUrl: message.imageUrl,
-          reason: String(error)
+          imageUrl: message.imageUrl, reason: String(error)
         });
       }
     }
   }
-
   throw lastError || new Error("source image fetch failed");
 }
 
 async function captureVisibleImageBlob(sender, message) {
   const capture = message.visibleCapture;
-  if (!capture) {
-    throw new Error("visible capture info is missing");
-  }
-  if (!chrome.tabs?.captureVisibleTab) {
-    throw new Error("chrome.tabs.captureVisibleTab is unavailable");
-  }
+  if (!capture) throw new Error("visible capture info is missing");
+  if (!chrome.tabs?.captureVisibleTab) throw new Error("chrome.tabs.captureVisibleTab is unavailable");
 
   const windowId = sender?.tab?.windowId;
   const screenshotDataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
@@ -147,37 +104,19 @@ async function captureVisibleImageBlob(sender, message) {
     const sy = Math.max(0, Math.floor(Number(capture.top || 0) * dpr));
     const sw = Math.max(1, Math.floor(Number(capture.width || 0) * dpr));
     const sh = Math.max(1, Math.floor(Number(capture.height || 0) * dpr));
-
     const cropRight = Math.min(bitmap.width, sx + sw);
     const cropBottom = Math.min(bitmap.height, sy + sh);
     const cropWidth = cropRight - sx;
     const cropHeight = cropBottom - sy;
-    if (cropWidth < 1 || cropHeight < 1) {
-      throw new Error("visible capture rectangle is outside the screenshot bounds");
-    }
+    if (cropWidth < 1 || cropHeight < 1) throw new Error("visible capture rectangle is outside the screenshot bounds");
 
     const canvas = new OffscreenCanvas(cropWidth, cropHeight);
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) {
-      throw new Error("failed to create crop canvas");
-    }
-
-    context.drawImage(
-      bitmap,
-      sx,
-      sy,
-      cropWidth,
-      cropHeight,
-      0,
-      0,
-      cropWidth,
-      cropHeight
-    );
+    if (!context) throw new Error("failed to create crop canvas");
+    context.drawImage(bitmap, sx, sy, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
     const blob = await canvas.convertToBlob({ type: "image/png" });
-    if (!blob || blob.size === 0) {
-      throw new Error("visible capture produced an empty blob");
-    }
+    if (!blob || blob.size === 0) throw new Error("visible capture produced an empty blob");
     return blob;
   } finally {
     bitmap.close?.();
@@ -185,14 +124,8 @@ async function captureVisibleImageBlob(sender, message) {
 }
 
 async function maybeResizeImageBlob(blob) {
-  if (
-    !blob ||
-    blob.size === 0 ||
-    typeof createImageBitmap !== "function" ||
-    typeof OffscreenCanvas === "undefined" ||
-    blob.type === "image/gif" ||
-    blob.type === "image/svg+xml"
-  ) {
+  if (!blob || blob.size === 0 || typeof createImageBitmap !== "function" ||
+      typeof OffscreenCanvas === "undefined" || blob.type === "image/gif" || blob.type === "image/svg+xml") {
     return blob;
   }
 
@@ -200,38 +133,26 @@ async function maybeResizeImageBlob(blob) {
   try {
     bitmap = await createImageBitmap(blob);
     const maxSide = Math.max(bitmap.width, bitmap.height);
-    if (maxSide <= MAX_UPLOAD_DIMENSION) {
-      return blob;
-    }
+    if (maxSide <= MAX_UPLOAD_DIMENSION) return blob;
 
     const scale = MAX_UPLOAD_DIMENSION / maxSide;
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) {
-      return blob;
-    }
+    if (!context) return blob;
 
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(bitmap, 0, 0, width, height);
 
     const targetType = blob.type === "image/webp" ? "image/webp" : "image/jpeg";
-    const resizedBlob = await canvas.convertToBlob({
-      type: targetType,
-      quality: 0.92
-    });
+    const resizedBlob = await canvas.convertToBlob({ type: targetType, quality: 0.92 });
+    if (!resizedBlob || resizedBlob.size >= blob.size) return blob;
 
-    if (!resizedBlob || resizedBlob.size >= blob.size) {
-      return blob;
-    }
-
-    console.log(
-      "[Comic Translator] resized upload blob:",
+    console.log("[Comic Translator] resized upload blob:",
       `${bitmap.width}x${bitmap.height} -> ${width}x${height}`,
-      `${blob.size} -> ${resizedBlob.size}`
-    );
+      `${blob.size} -> ${resizedBlob.size}`);
     return resizedBlob;
   } catch (error) {
     console.warn("[Comic Translator] resize skipped:", error);
@@ -245,17 +166,11 @@ async function requestTranslateUpload(message, blob) {
   const formData = new FormData();
   const mime = blob.type || "image/png";
   const subtype = (mime.split("/")[1] || "png").split(";")[0];
-  const filename = `source.${subtype}`;
-
-  formData.append("file", blob, filename);
+  formData.append("file", blob, `source.${subtype}`);
   formData.append("source_ocr_lang", message.sourceOcrLang || "en");
   formData.append("target_lang", message.targetLang || "Russian");
 
-  const response = await fetch(`${API_BASE}/translate-upload`, {
-    method: "POST",
-    body: formData
-  });
-
+  const response = await fetch(`${API_BASE}/translate-upload`, { method: "POST", body: formData });
   return readJsonResponse(response);
 }
 
@@ -264,26 +179,18 @@ async function blobToDataUrl(blob) {
   let binary = "";
   const bytes = new Uint8Array(arrayBuffer);
   const chunkSize = 0x8000;
-
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
-
-  const mime = blob.type || "image/png";
-  return `data:${mime};base64,${btoa(binary)}`;
+  return `data:${blob.type || "image/png"};base64,${btoa(binary)}`;
 }
 
 async function fetchResultDataUrl(resultUrl) {
   const cached = RESULT_DATA_URL_CACHE.get(resultUrl);
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   const response = await fetch(resultUrl, { method: "GET" });
-  if (!response.ok) {
-    throw new Error(`result fetch failed: HTTP ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`result fetch failed: HTTP ${response.status}`);
 
   const blob = await response.blob();
   const dataUrl = await blobToDataUrl(blob);
@@ -291,119 +198,127 @@ async function fetchResultDataUrl(resultUrl) {
   return dataUrl;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "translate-image") {
-    (async () => {
-      const totalStart = performance.now();
-      try {
-        const cacheKey = makeTranslationCacheKey(message);
-        const cached = TRANSLATION_CACHE.get(cacheKey);
-        if (cached) {
-          console.log("[Comic Translator] translate-image cache hit:", {
-            imageUrl: message.imageUrl,
-            totalMs: roundMs(performance.now() - totalStart)
-          });
-          sendResponse(cached);
-          return;
-        }
-
-        let data;
-        const timings = {};
-        try {
-          let sourceBlob;
-          if (message.domImageDataUrl) {
-            const domDecodeStart = performance.now();
-            sourceBlob = dataUrlToBlob(message.domImageDataUrl);
-            timings.domCaptureMs = Number(message.domImageInfo?.elapsedMs || 0);
-            timings.domDecodeMs = performance.now() - domDecodeStart;
-            timings.sourceKind = "dom";
-            timings.sourceBytes = Number(message.domImageInfo?.bytes || sourceBlob.size || 0);
-          } else if (message.visibleCapture) {
-            const screenshotStart = performance.now();
-            sourceBlob = await captureVisibleImageBlob(sender, message);
-            timings.screenshotCaptureMs = performance.now() - screenshotStart;
-            timings.sourceKind = "screenshot";
-            timings.sourceBytes = sourceBlob?.size || 0;
-          } else {
-            const fetchStart = performance.now();
-            const fetched = await fetchSourceImageBlob(message);
-            sourceBlob = fetched.blob;
-            timings.sourceFetchMs = performance.now() - fetchStart;
-            timings.sourceKind = "network";
-            timings.sourceBytes = sourceBlob?.size || 0;
-            timings.sourceFetchMode = fetched.cacheMode;
-          }
-
-          const resizeStart = performance.now();
-          const uploadBlob = await maybeResizeImageBlob(sourceBlob);
-          timings.resizeMs = performance.now() - resizeStart;
-
-          const uploadStart = performance.now();
-          data = await requestTranslateUpload(message, uploadBlob);
-          timings.serverRequestMs = performance.now() - uploadStart;
-          timings.uploadBytes = uploadBlob?.size || 0;
-        } catch (uploadError) {
-          console.warn(
-            "[Comic Translator] upload-first path failed, falling back to translate-from-url:",
-            uploadError
-          );
-          timings.uploadFirstError = String(uploadError);
-          const fallbackStart = performance.now();
-          data = await requestTranslateFromUrl(message);
-          timings.serverRequestMs = performance.now() - fallbackStart;
-        }
-
-        if (data?.ok && data.result_url) {
-          try {
-            const resultFetchStart = performance.now();
-            data.dataUrl = await fetchResultDataUrl(data.result_url);
-            timings.resultFetchMs = performance.now() - resultFetchStart;
-          } catch (resultError) {
-            console.warn("[Comic Translator] eager result fetch failed:", resultError);
-            timings.resultFetchError = String(resultError);
-          }
-
-          timings.totalMs = performance.now() - totalStart;
-          data.client_timings = Object.fromEntries(
-            Object.entries(timings).map(([key, value]) => [
-              key,
-              typeof value === "number" ? roundMs(value) : value
-            ])
-          );
-          rememberCacheValue(TRANSLATION_CACHE, cacheKey, data);
-        }
-
-        console.log("[Comic Translator] translate response:", data);
-        sendResponse(data);
-      } catch (error) {
-        console.error("[Comic Translator] translate error:", error);
-        sendResponse({
-          ok: false,
-          error: String(error)
-        });
-      }
-    })();
-
-    return true;
+// ---------------------------------------------------------------------------
+// Основная логика перевода — вынесена отдельно, используется и портом и
+// старым onMessage-хендлером для "fetch-image-as-data-url"
+// ---------------------------------------------------------------------------
+async function handleTranslateImage(message, sender) {
+  const totalStart = performance.now();
+  const cacheKey = makeTranslationCacheKey(message);
+  const cached = TRANSLATION_CACHE.get(cacheKey);
+  if (cached) {
+    console.log("[Comic Translator] translate-image cache hit:", { imageUrl: message.imageUrl });
+    return cached;
   }
 
+  let data;
+  const timings = {};
+
+  try {
+    let sourceBlob;
+    if (message.domImageDataUrl) {
+      const domDecodeStart = performance.now();
+      sourceBlob = dataUrlToBlob(message.domImageDataUrl);
+      timings.domCaptureMs = Number(message.domImageInfo?.elapsedMs || 0);
+      timings.domDecodeMs = performance.now() - domDecodeStart;
+      timings.sourceKind = "dom";
+      timings.sourceBytes = Number(message.domImageInfo?.bytes || sourceBlob.size || 0);
+    } else if (message.visibleCapture) {
+      const screenshotStart = performance.now();
+      sourceBlob = await captureVisibleImageBlob(sender, message);
+      timings.screenshotCaptureMs = performance.now() - screenshotStart;
+      timings.sourceKind = "screenshot";
+      timings.sourceBytes = sourceBlob?.size || 0;
+    } else {
+      const fetchStart = performance.now();
+      const fetched = await fetchSourceImageBlob(message);
+      sourceBlob = fetched.blob;
+      timings.sourceFetchMs = performance.now() - fetchStart;
+      timings.sourceKind = "network";
+      timings.sourceBytes = sourceBlob?.size || 0;
+      timings.sourceFetchMode = fetched.cacheMode;
+    }
+
+    const resizeStart = performance.now();
+    const uploadBlob = await maybeResizeImageBlob(sourceBlob);
+    timings.resizeMs = performance.now() - resizeStart;
+
+    const uploadStart = performance.now();
+    data = await requestTranslateUpload(message, uploadBlob);
+    timings.serverRequestMs = performance.now() - uploadStart;
+    timings.uploadBytes = uploadBlob?.size || 0;
+  } catch (uploadError) {
+    console.warn("[Comic Translator] upload-first path failed, falling back to translate-from-url:", uploadError);
+    timings.uploadFirstError = String(uploadError);
+    const fallbackStart = performance.now();
+    data = await requestTranslateFromUrl(message);
+    timings.serverRequestMs = performance.now() - fallbackStart;
+  }
+
+  if (data?.ok && data.result_url) {
+    try {
+      const resultFetchStart = performance.now();
+      data.dataUrl = await fetchResultDataUrl(data.result_url);
+      timings.resultFetchMs = performance.now() - resultFetchStart;
+    } catch (resultError) {
+      console.warn("[Comic Translator] eager result fetch failed:", resultError);
+      timings.resultFetchError = String(resultError);
+    }
+
+    timings.totalMs = performance.now() - totalStart;
+    data.client_timings = Object.fromEntries(
+      Object.entries(timings).map(([k, v]) => [k, typeof v === "number" ? roundMs(v) : v])
+    );
+    rememberCacheValue(TRANSLATION_CACHE, cacheKey, data);
+  }
+
+  console.log("[Comic Translator] translate response:", data);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Порт-based коммуникация — решает проблему "message channel closed"
+// Service worker остаётся живым пока открыт порт (приоритет: всегда активен)
+// ---------------------------------------------------------------------------
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "comic-translator") return;
+
+  port.onMessage.addListener(async (message) => {
+    if (message?.type !== "translate-image") return;
+
+    // Периодически пингуем порт чтобы воркер не засыпал во время перевода
+    const keepAlive = setInterval(() => {
+      try { port.postMessage({ type: "keep-alive" }); }
+      catch { clearInterval(keepAlive); }
+    }, 20_000);
+
+    try {
+      const data = await handleTranslateImage(message, port.sender);
+      port.postMessage({ type: "translate-result", data });
+    } catch (error) {
+      console.error("[Comic Translator] port translate error:", error);
+      port.postMessage({ type: "translate-result", data: { ok: false, error: String(error) } });
+    } finally {
+      clearInterval(keepAlive);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Старый onMessage — оставляем только для "fetch-image-as-data-url"
+// (лёгкая операция, не требует долгого ожидания)
+// ---------------------------------------------------------------------------
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "fetch-image-as-data-url") {
     (async () => {
       try {
         const dataUrl = await fetchResultDataUrl(message.url);
-        sendResponse({
-          ok: true,
-          dataUrl
-        });
+        sendResponse({ ok: true, dataUrl });
       } catch (error) {
         console.error("[Comic Translator] fetch-image-as-data-url error:", error);
-        sendResponse({
-          ok: false,
-          error: String(error)
-        });
+        sendResponse({ ok: false, error: String(error) });
       }
     })();
-
     return true;
   }
 });

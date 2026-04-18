@@ -7,11 +7,18 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
-MODEL_ID = "tencent/HY-MT1.5-7B"
-# Для более высокой скорости можно попробовать:
+
+# Для более высокой скорости — 1.8B (качество на коротких репликах почти то же):
 # MODEL_ID = "tencent/HY-MT1.5-1.8B"
-# MODEL_ID = "tencent/HY-MT1.5-7B"
+MODEL_ID = "tencent/HY-MT1.5-7B"
 # MODEL_ID = "tencent/HY-MT1.5-7B-FP8"
+
+# Максимум токенов в ответе. Реплики комиксов редко длиннее 60-70 токенов,
+# 256 — лишняя работа для генератора.
+_MAX_NEW_TOKENS = 128
+
+# Короткий промпт — меньше токенов на входе, быстрее prefill.
+_PROMPT_TEMPLATE = "Translate to {lang}:\n{text}"
 
 
 class HyMtTranslator:
@@ -64,11 +71,7 @@ class HyMtTranslator:
             return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _build_prompt(self, source_text: str, target_language: str) -> str:
-        return (
-            f"Translate the following segment into {target_language}, "
-            "without additional explanation.\n\n"
-            f"{source_text}"
-        )
+        return _PROMPT_TEMPLATE.format(lang=target_language, text=source_text)
 
     def translate_batch(self, texts: list[str], target_language: str = "Russian") -> list[str]:
         clean_texts = [(t or "").strip() for t in texts]
@@ -95,7 +98,7 @@ class HyMtTranslator:
             truncation=True,
         )
         model_inputs.pop("token_type_ids", None)
-        
+
         device = self._get_model_input_device()
         model_inputs = {k: v.to(device) for k, v in model_inputs.items()}
         input_lengths = model_inputs["attention_mask"].sum(dim=1).tolist()
@@ -103,7 +106,7 @@ class HyMtTranslator:
         with torch.inference_mode():
             outputs = self.model.generate(
                 **model_inputs,
-                max_new_tokens=256,
+                max_new_tokens=_MAX_NEW_TOKENS,
                 do_sample=False,
                 repetition_penalty=1.02,
                 pad_token_id=self.tokenizer.eos_token_id,

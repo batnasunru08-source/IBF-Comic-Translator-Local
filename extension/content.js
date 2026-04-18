@@ -518,23 +518,54 @@ function createButton(img) {
       if (visibleCapture) {
         button.style.display = "none";
       }
-      const response = await chrome.runtime.sendMessage({
-        type: "translate-image",
-        imageUrl,
-        pageUrl: window.location.href,
-        sourceOcrLang: SETTINGS.sourceOcrLang,
-        targetLang: SETTINGS.targetLang,
-        domImageDataUrl: domImage?.dataUrl || "",
-        domImageInfo: domImage
-          ? {
-              mime: domImage.mime,
-              width: domImage.width,
-              height: domImage.height,
-              bytes: domImage.bytes,
-              elapsedMs: domImage.elapsedMs
-            }
-          : null,
-        visibleCapture
+      // Используем порт вместо sendMessage — воркер не засыпает во время долгого перевода
+      const response = await new Promise((resolve, reject) => {
+        let port;
+        try {
+          port = chrome.runtime.connect({ name: "comic-translator" });
+        } catch (err) {
+          reject(err);
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          try { port.disconnect(); } catch {}
+          reject(new Error("Translation timed out (no response in 5 minutes)"));
+        }, 5 * 60 * 1000);
+
+        port.onMessage.addListener((msg) => {
+          if (msg.type === "keep-alive") return; // воркер живой, ждём дальше
+          if (msg.type === "translate-result") {
+            clearTimeout(timeout);
+            port.disconnect();
+            resolve(msg.data);
+          }
+        });
+
+        port.onDisconnect.addListener(() => {
+          clearTimeout(timeout);
+          const err = chrome.runtime.lastError;
+          reject(new Error(err?.message || "Port disconnected before response"));
+        });
+
+        port.postMessage({
+          type: "translate-image",
+          imageUrl,
+          pageUrl: window.location.href,
+          sourceOcrLang: SETTINGS.sourceOcrLang,
+          targetLang: SETTINGS.targetLang,
+          domImageDataUrl: domImage?.dataUrl || "",
+          domImageInfo: domImage
+            ? {
+                mime: domImage.mime,
+                width: domImage.width,
+                height: domImage.height,
+                bytes: domImage.bytes,
+                elapsedMs: domImage.elapsedMs
+              }
+            : null,
+          visibleCapture
+        });
       });
 
       if (!response?.ok || !response.result_url) {
