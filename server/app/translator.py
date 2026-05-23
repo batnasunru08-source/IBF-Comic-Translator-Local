@@ -1,130 +1,148 @@
 from __future__ import annotations
 
-import logging
-from functools import lru_cache
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+import logging
+import re
+from functools import lru_cache
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Для более высокой скорости — 1.8B (качество на коротких репликах почти то же):
-# MODEL_ID = "tencent/HY-MT1.5-1.8B"
-MODEL_ID = "tencent/HY-MT1.5-7B"
-# MODEL_ID = "tencent/HY-MT1.5-7B-FP8"
+MODEL_PATH = Path(__file__).parent.parent / "models" / "Hy-MT2-1.8B-Q8_0.gguf"
 
-# Максимум токенов в ответе. Реплики комиксов редко длиннее 60-70 токенов,
-# 256 — лишняя работа для генератора.
-_MAX_NEW_TOKENS = 128
+_TEMPERATURE        = 0.7
+_TOP_P              = 0.6
+_TOP_K              = 20
+_REPETITION_PENALTY = 1.05
+_MAX_TOKENS         = 1024  # больше для батча
 
-# Короткий промпт — меньше токенов на входе, быстрее prefill.
-_PROMPT_TEMPLATE = "Translate to {lang}:\n{text}"
+# Промпт для одного текста
+_SINGLE_PROMPT = (
+    "Translate the following text into {lang}. "
+    "Output only the translated result, no explanations:\n\n{text}"
+)
+
+# Промпт для батча — нумерованные строки, без JSON (надёжнее при кавычках)
+_BATCH_PROMPT = (
+    "Translate each numbered item into {lang}.\n"
+    "Rules:\n"
+    "- Output ONLY the translations, one per line\n"
+    "- Keep the same numbering: 1. 2. 3. etc\n"
+    "- No explanations, no extra text\n\n"
+    "{items}"
+)
+
+# Паттерн для парсинга нумерованных строк: "1. текст" или "1) текст"
+_NUMBERED_LINE_RE = re.compile(r"^\d+[.)\s]\s*(.+)$", re.MULTILINE)
 
 
-class HyMtTranslator:
+class HyMt2Translator:
     def __init__(self) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-        self.model = self._load_model()
-        if hasattr(self.model, "generation_config") and self.model.generation_config is not None:
-            self.model.generation_config.temperature = None
-            self.model.generation_config.top_p = None
-            self.model.generation_config.top_k = None
-
-    def _load_model(self):
-        common_kwargs = {
-            "device_map": "auto",
-            "trust_remote_code": True,
-            "low_cpu_mem_usage": True,
-        }
-
-        if torch.cuda.is_available():
-            try:
-                from transformers import BitsAndBytesConfig
-
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                    bnb_4bit_use_double_quant=True,
-                )
-                logger.info("Trying 4-bit bitsandbytes load on CUDA")
-                return AutoModelForCausalLM.from_pretrained(
-                    MODEL_ID,
-                    quantization_config=quantization_config,
-                    dtype=torch.bfloat16,
-                    **common_kwargs,
-                )
-            except Exception as exc:
-                logger.warning("4-bit load failed, fallback to non-quantized CUDA load: %s", exc)
-                return AutoModelForCausalLM.from_pretrained(
-                    MODEL_ID,
-                    dtype=torch.float16,
-                    **common_kwargs,
-                )
-
-        logger.info("CUDA not available, loading on CPU")
-        return AutoModelForCausalLM.from_pretrained(MODEL_ID, **common_kwargs)
-
-    def _get_model_input_device(self) -> torch.device:
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"GGUF модель не найдена: {MODEL_PATH}\n"
+                f"Скачай: bash download-model.sh"
+            )
         try:
-            return next(self.model.parameters()).device
-        except StopIteration:
-            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            from llama_cpp import Llama
+        except ModuleNotFoundError:
+            raise RuntimeError(
+                "llama-cpp-python не установлен.\n"
+                "CPU: pip install llama-cpp-python\n"
+                "GPU: CMAKE_ARGS='-DGGML_CUDA=on' pip install llama-cpp-python"
+            )
 
-    def _build_prompt(self, source_text: str, target_language: str) -> str:
-        return _PROMPT_TEMPLATE.format(lang=target_language, text=source_text)
+        n_gpu_layers = self._pick_gpu_layers()
+        logger.info(f"[TRANSLATOR] Loading {MODEL_PATH.name} n_gpu_layers={n_gpu_layers}")
+
+        self._llm = Llama(
+            model_path=str(MODEL_PATH),
+            n_ctx=4096,
+            n_gpu_layers=n_gpu_layers,
+            verbose=False,
+        )
+        logger.info("[TRANSLATOR] Model loaded OK")
+
+    @staticmethod
+    def _pick_gpu_layers() -> int:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return -1
+        except Exception:
+            pass
+        return 0
+
+    def _call(self, prompt: str, max_tokens: int = _MAX_TOKENS) -> str:
+        output = self._llm.create_chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=_TEMPERATURE,
+            top_p=_TOP_P,
+            top_k=_TOP_K,
+            repeat_penalty=_REPETITION_PENALTY,
+            max_tokens=max_tokens,
+        )
+        return output["choices"][0]["message"]["content"].strip()
+
+    def _translate_single(self, text: str, lang: str) -> str:
+        prompt = _SINGLE_PROMPT.format(lang=lang, text=text)
+        return self._call(prompt, max_tokens=256)
+
+    def _parse_numbered_lines(self, raw: str, expected: int) -> list[str] | None:
+        """Парсит ответ вида '1. текст\n2. текст\n...'
+
+        Возвращает список переводов или None если не удалось распознать.
+        """
+        # Убираем markdown-блоки если модель обернула ответ
+        raw = re.sub(r"```[\w]*\n?", "", raw).strip()
+
+        matches = _NUMBERED_LINE_RE.findall(raw)
+        if len(matches) == expected:
+            return [m.strip() for m in matches]
+
+        # Иногда модель пишет без номеров — пробуем разбить по строкам
+        lines = [l.strip() for l in raw.splitlines() if l.strip()]
+        if len(lines) == expected:
+            return lines
+
+        return None
+
+    def _translate_batch_single_call(self, texts: list[str], lang: str) -> list[str]:
+        """Отправляет все тексты одним запросом — модель возвращает нумерованные строки."""
+        items = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+        prompt = _BATCH_PROMPT.format(lang=lang, items=items)
+        raw = self._call(prompt, max_tokens=_MAX_TOKENS)
+
+        parsed = self._parse_numbered_lines(raw, len(texts))
+        if parsed is not None:
+            return parsed
+
+        # Fallback: переводим по одному
+        logger.warning(
+            f"[TRANSLATOR] Batch parse failed (got {len(raw.splitlines())} lines, "
+            f"expected {len(texts)}), falling back to sequential"
+        )
+        return [self._translate_single(t, lang) for t in texts]
 
     def translate_batch(self, texts: list[str], target_language: str = "Russian") -> list[str]:
-        clean_texts = [(t or "").strip() for t in texts]
-        prompts = [self._build_prompt(t, target_language) for t in clean_texts if t]
+        # Разделяем на непустые (для перевода) и пустые (мусор/скип)
+        indices_to_translate = [(i, t) for i, t in enumerate(texts) if (t or "").strip()]
+        result = [""] * len(texts)
 
-        if not prompts:
-            return [""] * len(texts)
+        if not indices_to_translate:
+            return result
 
-        messages_batch = [[{"role": "user", "content": prompt}] for prompt in prompts]
+        indices, clean_texts = zip(*indices_to_translate)
 
-        rendered_prompts = [
-            self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-            for messages in messages_batch
-        ]
+        if len(clean_texts) == 1:
+            # Один текст — без оверхеда на JSON
+            translations = [self._translate_single(clean_texts[0], target_language)]
+        else:
+            # Несколько текстов — один запрос
+            translations = self._translate_batch_single_call(list(clean_texts), target_language)
 
-        model_inputs = self.tokenizer(
-            rendered_prompts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-        )
-        model_inputs.pop("token_type_ids", None)
-
-        device = self._get_model_input_device()
-        model_inputs = {k: v.to(device) for k, v in model_inputs.items()}
-        input_lengths = model_inputs["attention_mask"].sum(dim=1).tolist()
-
-        with torch.inference_mode():
-            outputs = self.model.generate(
-                **model_inputs,
-                max_new_tokens=_MAX_NEW_TOKENS,
-                do_sample=False,
-                repetition_penalty=1.02,
-                pad_token_id=self.tokenizer.eos_token_id,
-                use_cache=True,
-            )
-
-        decoded: list[str] = []
-        for i, input_len in enumerate(input_lengths):
-            new_tokens = outputs[i][int(input_len):]
-            decoded.append(self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip())
-
-        result: list[str] = []
-        decoded_iter = iter(decoded)
-        for original in texts:
-            if (original or "").strip():
-                result.append(next(decoded_iter))
-            else:
-                result.append("")
+        for idx, translation in zip(indices, translations):
+            result[idx] = translation
 
         return result
 
@@ -133,5 +151,5 @@ class HyMtTranslator:
 
 
 @lru_cache(maxsize=1)
-def get_translator() -> HyMtTranslator:
-    return HyMtTranslator()
+def get_translator() -> HyMt2Translator:
+    return HyMt2Translator()
