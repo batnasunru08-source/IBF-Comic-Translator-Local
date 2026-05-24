@@ -783,45 +783,26 @@ def render_translations(
         bg_luma  = _luma(background)
         is_light_bg = bg_luma >= 200
 
-        if is_light_bg:
-            # Белый/светлый пузырь — inpaint уже дал чистый фон.
-            # Подложка не нужна, достаточно stroke для читаемости.
-            _draw_text_with_halo(
-                draw, image,
-                text_x, text_y, wrapped, font,
-                fill=fill,
-                stroke_fill=stroke_fill,
-                stroke_width=stroke_width,
-                spacing=spacing,
-                text_w=text_w, text_h=text_h,
-                use_halo=False,
-            )
-        elif contrast >= 60:
-            # Цветной фон с достаточным контрастом —
-            # рисуем мягкую подложку цветом фона оригинала.
-            pad_bg = max(3, font_size // 6)
-            draw.rectangle(
-                [text_x - pad_bg, text_y - pad_bg,
-                 text_x + text_w + pad_bg, text_y + text_h + pad_bg],
-                fill=background,
-            )
-            draw.multiline_text(
-                (text_x, text_y), wrapped, font=font, fill=fill,
-                stroke_width=stroke_width, stroke_fill=stroke_fill,
-                spacing=spacing, align="center",
-            )
+        # Непрозрачная подложка: светлый фон → чёрный текст, тёмный фон → белый текст.
+        pad_bg = max(6, font_size // 4)
+        bg_x1 = int(text_x - pad_bg)
+        bg_y1 = int(text_y - pad_bg)
+        bg_x2 = int(text_x + text_w + pad_bg)
+        bg_y2 = int(text_y + text_h + pad_bg)
+
+        if bg_luma >= 128:
+            fill = (0, 0, 0)
+            bg_color = (255, 255, 255)
         else:
-            # Низкий контраст (тёмный текст на тёмном фоне или
-            # светлый на светлом) — размытое гало вокруг текста.
-            _draw_text_with_halo(
-                draw, image,
-                text_x, text_y, wrapped, font,
-                fill=fill,
-                stroke_fill=stroke_fill,
-                stroke_width=stroke_width,
-                spacing=spacing,
-                text_w=text_w, text_h=text_h,
-                use_halo=True,
-            )
+            fill = (255, 255, 255)
+            bg_color = (0, 0, 0)
+
+        draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color)
+
+        draw.multiline_text(
+            (text_x, text_y), wrapped, font=font, fill=fill,
+            stroke_width=0, stroke_fill=None,
+            spacing=spacing, align="center",
+        )
 
     return image

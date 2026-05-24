@@ -1,7 +1,8 @@
 -r requirements.txt
 
-# CPU: torch (нужен для PaddleOCR transformers backend)
+# CPU: torch + torchvision (нужны для PaddleOCR transformers backend)
 torch>=2.7.0
+torchvision>=0.20.0
 
 # llama-cpp-python CPU build
 llama-cpp-python

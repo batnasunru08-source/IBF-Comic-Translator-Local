@@ -1,8 +1,9 @@
 -r requirements.txt
 
-# torch CUDA 13.0
+# torch CUDA 13.0 + torchvision
 --extra-index-url https://download.pytorch.org/whl/cu130
 torch>=2.7.0
+torchvision>=0.20.0
 
 # llama-cpp-python GPU build — собирается с CUDA
 # Нужен установленный CUDA toolkit

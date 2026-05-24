@@ -52,20 +52,15 @@ def _pick_device() -> str:
 
 
 def _pick_engine() -> str:
-    """Выбираем Transformers если PaddlePaddle не установлен.
+    """Всегда используем Transformers backend.
 
     PaddleOCR 3.5.0 поддерживает два inference backend:
       - 'paddle'       — PaddlePaddle (старый, тяжёлый)
       - 'transformers' — HuggingFace Transformers (новый, без PaddlePaddle)
 
-    Если paddlepaddle не установлен, автоматически переключаемся на
-    transformers backend — так не нужно устанавливать PaddlePaddle отдельно.
+    Фиксируем transformers — не зависит от наличия PaddlePaddle.
     """
-    try:
-        import paddle  # noqa: F401
-        return "paddle"
-    except ModuleNotFoundError:
-        return "transformers"
+    return "transformers"
 
 
 @lru_cache(maxsize=16)
