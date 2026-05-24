@@ -465,8 +465,13 @@ function createButton(img) {
 
   const layer = ensureLayer();
   const button = document.createElement("button");
-  button.textContent = "IBF";
-  button.title = "Перевести изображение";
+  try {
+    button.textContent = chrome.i18n.getMessage("button_label") || "IBF";
+    button.title = chrome.i18n.getMessage("button_translate") || "Translate image";
+  } catch {
+    button.textContent = "IBF";
+    button.title = "Translate image";
+  }
 
   Object.assign(button.style, {
     position: "fixed",
@@ -569,8 +574,13 @@ function createButton(img) {
       });
 
       if (!response?.ok || !response.result_url) {
-        console.error("[Comic Translator] translate error:", response?.error || response);
-        alert(`Ошибка перевода изображения: ${response?.error || "неизвестная ошибка"}`);
+       console.error("[Comic Translator] translate error:", response?.error || response);
+        const errMsg = response?.error || "unknown error";
+        try {
+          alert(chrome.i18n.getMessage("error_translate", errMsg));
+        } catch {
+          alert(`Translation error: ${errMsg}`);
+        }
         return;
       }
 
@@ -584,8 +594,13 @@ function createButton(img) {
       }
 
       if (!translatedDataUrl && (!fetchResult?.ok || !fetchResult?.dataUrl)) {
-        console.error("[Comic Translator] fetch result error:", fetchResult?.error || fetchResult);
-        alert(`Ошибка загрузки переведённого изображения: ${fetchResult?.error || "неизвестная ошибка"}`);
+       console.error("[Comic Translator] fetch result error:", fetchResult?.error || fetchResult);
+        const fetchErr = fetchResult?.error || "unknown error";
+        try {
+          alert(chrome.i18n.getMessage("error_fetch", fetchErr));
+        } catch {
+          alert(`Failed to load translated image: ${fetchErr}`);
+        }
         return;
       }
       state.translatedDataUrl = translatedDataUrl || fetchResult.dataUrl;
@@ -599,7 +614,12 @@ function createButton(img) {
       img.dataset.comicTranslatorTranslated = "1";
     } catch (error) {
       console.error("[Comic Translator] click error:", error);
-      alert(`Ошибка перевода изображения: ${String(error)}`);
+      const errStr = String(error);
+      try {
+        alert(chrome.i18n.getMessage("error_generic", errStr));
+      } catch {
+        alert(`Translation error: ${errStr}`);
+      }
     } finally {
       button.style.display = originalDisplay;
       button.disabled = false;

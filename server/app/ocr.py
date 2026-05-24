@@ -99,6 +99,7 @@ def get_paddleocr_engine(source_lang: str):
         "use_textline_orientation": True,
         "device": device,
         "engine": engine,
+        "precision": "fp16" if device == "gpu:0" else "fp32",
     }
 
     # mkldnn конфликтует с Transformers backend

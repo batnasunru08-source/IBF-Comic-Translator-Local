@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Comic Translator</title>
+  <title data-i18n="popup_title">Comic Translator</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -64,34 +64,34 @@
   </style>
 </head>
 <body>
-  <div class="title">Comic Translator</div>
+  <div class="title" data-i18n="popup_title">Comic Translator</div>
 
   <div class="section">
     <label>
       <input type="checkbox" id="enabled">
-      <span>Включить расширение</span>
+      <span data-i18n="popup_enabled">Enable extension</span>
     </label>
   </div>
 
   <div class="section" id="modeSection">
-    <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">
-      Режим отображения
+    <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;" data-i18n="popup_mode_title">
+      Display mode
     </div>
 
     <div class="group">
       <label>
         <input type="radio" name="renderMode" value="replace">
-        <span>Replace — заменить исходное</span>
+        <span data-i18n="popup_mode_replace">Replace — replace original</span>
       </label>
 
       <label>
         <input type="radio" name="renderMode" value="overlay">
-        <span>Overlay — поверх оригинала</span>
+        <span data-i18n="popup_mode_overlay">Overlay — on top of original</span>
       </label>
     </div>
 
     <div class="field">
-      <label for="sourceOcrLang">Язык текста (OCR)</label>
+      <label for="sourceOcrLang" data-i18n="popup_source_lang">Text language (OCR)</label>
       <select id="sourceOcrLang">
         <option value="en">English</option>
         <option value="ru">Русский</option>
@@ -106,7 +106,7 @@
     </div>
 
     <div class="field">
-      <label for="targetLang">Переводить на</label>
+      <label for="targetLang" data-i18n="popup_target_lang">Translate to</label>
       <select id="targetLang">
         <option value="Russian">Русский</option>
         <option value="English">English</option>
@@ -121,9 +121,9 @@
     </div>
   </div>
 
-  <div class="hint">
-    Язык текста влияет на OCR.<br>
-    Язык перевода влияет на ответ модели.
+  <div class="hint" data-i18n="popup_hint">
+    Text language affects OCR.
+    Translation language affects the model output.
   </div>
 
   <script src="popup.js"></script>

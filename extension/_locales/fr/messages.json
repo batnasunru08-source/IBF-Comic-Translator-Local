@@ -1,0 +1,77 @@
+{
+  "extension_name": {
+    "message": "IBF Comic Translator Local",
+    "description": "Nom de l'extension"
+  },
+  "extension_description": {
+    "message": "Traduit les images sur les pages web",
+    "description": "Description de l'extension"
+  },
+  "popup_title": {
+    "message": "Comic Translator Settings",
+    "description": "Titre du popup"
+  },
+  "popup_enabled": {
+    "message": "Activer l'extension",
+    "description": "Étiquette de la case"
+  },
+  "popup_mode_title": {
+    "message": "Mode d'affichage",
+    "description": "Titre de la section mode"
+  },
+  "popup_mode_replace": {
+    "message": "Replace — remplacer l'original",
+    "description": "Étiquette du mode remplacement"
+  },
+  "popup_mode_overlay": {
+    "message": "Overlay — par-dessus l'original",
+    "description": "Étiquette du mode superposition"
+  },
+  "popup_source_lang": {
+    "message": "Langue du texte (OCR)",
+    "description": "Étiquette de la langue OCR"
+  },
+  "popup_target_lang": {
+    "message": "Traduire en",
+    "description": "Étiquette de la langue de traduction"
+  },
+  "popup_hint": {
+    "message": "La langue du texte affecte l'OCR.\nLa langue de traduction affecte la sortie du modèle.",
+    "description": "Texte d'aide"
+  },
+  "button_translate": {
+    "message": "Traduire l'image",
+    "description": "Infobulle du bouton"
+  },
+  "button_label": {
+    "message": "IBF",
+    "description": "Texte du bouton"
+  },
+  "error_translate": {
+    "message": "Erreur de traduction : $ERROR$",
+    "description": "Message d'erreur de traduction",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_fetch": {
+    "message": "Échec du chargement de l'image traduite : $ERROR$",
+    "description": "Message d'erreur de chargement",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_generic": {
+    "message": "Erreur de traduction : $ERROR$",
+    "description": "Erreur générique",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  }
+}

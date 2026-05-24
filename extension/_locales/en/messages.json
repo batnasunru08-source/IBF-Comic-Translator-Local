@@ -1,0 +1,77 @@
+{
+  "extension_name": {
+    "message": "IBF Comic Translator Local",
+    "description": "Extension name"
+  },
+  "extension_description": {
+    "message": "Translates images on web pages",
+    "description": "Extension description"
+  },
+  "popup_title": {
+    "message": "Comic Translator Settings",
+    "description": "Popup title"
+  },
+  "popup_enabled": {
+    "message": "Enable extension",
+    "description": "Enable checkbox label"
+  },
+  "popup_mode_title": {
+    "message": "Display mode",
+    "description": "Mode section title"
+  },
+  "popup_mode_replace": {
+    "message": "Replace — replace original",
+    "description": "Replace mode label"
+  },
+  "popup_mode_overlay": {
+    "message": "Overlay — on top of original",
+    "description": "Overlay mode label"
+  },
+  "popup_source_lang": {
+    "message": "Text language (OCR)",
+    "description": "Source language label"
+  },
+  "popup_target_lang": {
+    "message": "Translate to",
+    "description": "Target language label"
+  },
+  "popup_hint": {
+    "message": "Text language affects OCR.\nTranslation language affects the model output.",
+    "description": "Hint text"
+  },
+  "button_translate": {
+    "message": "Translate image",
+    "description": "Button title tooltip"
+  },
+  "button_label": {
+    "message": "IBF",
+    "description": "Button text label"
+  },
+  "error_translate": {
+    "message": "Image translation error: $ERROR$",
+    "description": "Translation error message",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_fetch": {
+    "message": "Failed to load translated image: $ERROR$",
+    "description": "Fetch error message",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_generic": {
+    "message": "Image translation error: $ERROR$",
+    "description": "Generic error message",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  }
+}

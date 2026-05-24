@@ -5,6 +5,30 @@ const DEFAULTS = {
   targetLang: "Russian"
 };
 
+const LANGUAGES = ["en", "ru", "fr"];
+
+function t(key) {
+  try {
+    return chrome.i18n.getMessage(key) || key;
+  } catch {
+    return key;
+  }
+}
+
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const msg = t(key);
+    if (el.tagName === "TITLE") {
+      document.title = msg;
+      return;
+    }
+    if (el.tagName === "LABEL" || el.tagName === "SPAN" || el.tagName === "DIV") {
+      el.textContent = msg;
+    }
+  });
+}
+
 function updateModeSection(enabled) {
   const section = document.getElementById("modeSection");
   if (!section) return;
@@ -22,6 +46,8 @@ function updateModeSection(enabled) {
 }
 
 async function init() {
+  applyI18n();
+
   const stored = await chrome.storage.local.get(DEFAULTS);
 
   const enabledCheckbox = document.getElementById("enabled");

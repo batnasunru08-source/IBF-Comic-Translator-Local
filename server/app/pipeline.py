@@ -5,6 +5,7 @@ from time import perf_counter
 from pathlib import Path
 from typing import Any
 import json
+import re
 
 import cv2
 import numpy as np
@@ -357,6 +358,7 @@ def process_image_bytes(
         - доля буквенно-цифровых символов >= 40%
         - минимум 2 буквы (одна буква + спецсимвол типа "T#" — мусор)
         - не состоит целиком из повторяющегося символа (напр. "####")
+        - не содержит артефакты OCR типа "$\\}$", "[]", "{}" внутри слов
         """
         text = (text or "").strip()
         if len(text) < 2:
@@ -370,6 +372,13 @@ def process_image_bytes(
             return False
         # Повторяющийся символ: "###", "...", "___" и т.п.
         if len(set(text.replace(" ", ""))) <= 1:
+            return False
+        # Артефакты OCR: "\", "$...$", "{}", "[]" внутри текста
+        if "\\" in text:
+            return False
+        if re.search(r'\$[^$]*\$', text):
+            return False
+        if re.search(r'[\{\}\[\]]', text):
             return False
         return True
 
@@ -393,12 +402,17 @@ def process_image_bytes(
         block.translated_text = translated
         print(f"[PIPELINE] translated[{i}]: {translated!r}")
 
+    blocks_to_render = [b for b in blocks if b.translated_text]
+    n_skip = len(blocks) - len(blocks_to_render)
+    if n_skip:
+        print(f"[PIPELINE] skipping {n_skip} blocks from inpaint/render")
+
     inpaint_started = perf_counter()
-    cleaned, block_masks = inpaint_text(np_image, blocks)
+    cleaned, block_masks = inpaint_text(np_image, blocks_to_render)
     inpaint_ms = round((perf_counter() - inpaint_started) * 1000)
 
     render_started = perf_counter()
-    rendered = render_translations(cleaned, blocks, original_image=np_image, block_masks=block_masks)
+    rendered = render_translations(cleaned, blocks_to_render, original_image=np_image, block_masks=block_masks)
     render_ms = round((perf_counter() - render_started) * 1000)
 
     save_started = perf_counter()
@@ -414,7 +428,7 @@ def process_image_bytes(
         "boxes_detected": len(raw_blocks),
         "region_candidates": len(regions),
         "boxes_grouped": len(blocks),
-        "boxes_used": len(blocks),
+        "boxes_used": len(blocks_to_render),
         "source_texts": [block.source_text for block in blocks],
         "translated_texts": [block.translated_text for block in blocks],
         "debug_dir": str(debug_dir),

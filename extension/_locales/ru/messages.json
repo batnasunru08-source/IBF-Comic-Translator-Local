@@ -1,0 +1,77 @@
+{
+  "extension_name": {
+    "message": "IBF Comic Translator Local",
+    "description": "Название расширения"
+  },
+  "extension_description": {
+    "message": "Переводит изображения на странице браузера",
+    "description": "Описание расширения"
+  },
+  "popup_title": {
+    "message": "Comic Translator Settings",
+    "description": "Заголовок попапа"
+  },
+  "popup_enabled": {
+    "message": "Включить расширение",
+    "description": "Метка чекбокса"
+  },
+  "popup_mode_title": {
+    "message": "Режим отображения",
+    "description": "Заголовок секции режима"
+  },
+  "popup_mode_replace": {
+    "message": "Replace — заменить исходное",
+    "description": "Метка режима замены"
+  },
+  "popup_mode_overlay": {
+    "message": "Overlay — поверх оригинала",
+    "description": "Метка режима оверлея"
+  },
+  "popup_source_lang": {
+    "message": "Язык текста (OCR)",
+    "description": "Метка языка OCR"
+  },
+  "popup_target_lang": {
+    "message": "Переводить на",
+    "description": "Метка языка перевода"
+  },
+  "popup_hint": {
+    "message": "Язык текста влияет на OCR.\nЯзык перевода влияет на ответ модели.",
+    "description": "Подсказка"
+  },
+  "button_translate": {
+    "message": "Перевести изображение",
+    "description": "Подсказка кнопки"
+  },
+  "button_label": {
+    "message": "IBF",
+    "description": "Текст кнопки"
+  },
+  "error_translate": {
+    "message": "Ошибка перевода изображения: $ERROR$",
+    "description": "Сообщение об ошибке перевода",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_fetch": {
+    "message": "Ошибка загрузки переведённого изображения: $ERROR$",
+    "description": "Сообщение об ошибке загрузки",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "error_generic": {
+    "message": "Ошибка перевода изображения: $ERROR$",
+    "description": "Общая ошибка",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  }
+}
