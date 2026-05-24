@@ -1,6 +1,6 @@
 # IBF Comic Translator Local
 
-[🇬🇧 English](README_en.md) | [🇨🇳 中文](README_zh.md)
+[en English](README_en.md) | [🇨🇳 中文](README_zh.md)
 
 Локальный переводчик комиксов прямо из браузера.
 
