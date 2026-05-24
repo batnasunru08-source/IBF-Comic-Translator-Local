@@ -648,83 +648,6 @@ def _bubble_text_bounds(block_mask, x1, y1, x2, y2, image_w, image_h, pad_x, pad
 
 
 # ---------------------------------------------------------------------------
-# Рисование текста с гало / тенью для читаемости на сложном фоне
-# ---------------------------------------------------------------------------
-
-def _draw_text_with_halo(
-    draw: ImageDraw.ImageDraw,
-    image: Image.Image,
-    text_x: float,
-    text_y: float,
-    wrapped: str,
-    font,
-    fill: tuple,
-    stroke_fill: tuple,
-    stroke_width: int,
-    spacing: int,
-    text_w: float,
-    text_h: float,
-    use_halo: bool = True,
-) -> None:
-    """Рисует текст с размытым гало для читаемости на любом фоне.
-
-    Алгоритм:
-    1. Рендерим текст на отдельном прозрачном слое
-    2. Размываем его — получаем «ореол» контрастного цвета
-    3. Накладываем ореол на изображение, поверх — чёткий текст
-
-    use_halo=False — просто рисуем текст без гало (для чистых пузырей).
-    """
-    if not use_halo:
-        draw.multiline_text(
-            (text_x, text_y), wrapped, font=font, fill=fill,
-            stroke_width=stroke_width, stroke_fill=stroke_fill,
-            spacing=spacing, align="center",
-        )
-        return
-
-    # Определяем цвет гало: противоположный яркости текста
-    fill_luma = _luma(fill)
-    halo_color = (0, 0, 0) if fill_luma >= 128 else (255, 255, 255)
-
-    # Радиус размытия зависит от размера шрифта
-    font_size = getattr(font, "size", 14)
-    blur_radius = max(2, font_size // 5)
-
-    # Padding вокруг текста для гало
-    pad = blur_radius * 2
-    layer_w = int(text_w) + pad * 2 + 2
-    layer_h = int(text_h) + pad * 2 + 2
-
-    # Слой для гало: рисуем текст гало-цветом, потом размываем
-    halo_layer = Image.new("RGBA", (layer_w, layer_h), (0, 0, 0, 0))
-    halo_draw  = ImageDraw.Draw(halo_layer)
-    halo_draw.multiline_text(
-        (pad, pad), wrapped, font=font,
-        fill=(*halo_color, 255),
-        stroke_width=max(1, blur_radius // 2),
-        stroke_fill=(*halo_color, 255),
-        spacing=spacing, align="center",
-    )
-
-    # Размываем гало
-    from PIL import ImageFilter
-    halo_layer = halo_layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-
-    # Накладываем гало на изображение
-    paste_x = int(text_x) - pad
-    paste_y = int(text_y) - pad
-    image.paste(halo_layer, (paste_x, paste_y), mask=halo_layer)
-
-    # Поверх гало — чёткий текст
-    draw.multiline_text(
-        (text_x, text_y), wrapped, font=font, fill=fill,
-        stroke_width=stroke_width, stroke_fill=stroke_fill,
-        spacing=spacing, align="center",
-    )
-
-
-# ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
 
@@ -779,9 +702,7 @@ def render_translations(
         spacing      = max(4, int(round(font_size * 0.25)))
         stroke_width = _pick_stroke_width(font_size, fill, background)
 
-        contrast = _color_distance(fill, background)
-        bg_luma  = _luma(background)
-        is_light_bg = bg_luma >= 200
+        bg_luma = _luma(background)
 
         # Непрозрачная подложка: светлый фон → чёрный текст, тёмный фон → белый текст.
         pad_bg = max(6, font_size // 4)

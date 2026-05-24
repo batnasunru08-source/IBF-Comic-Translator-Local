@@ -1,5 +1,7 @@
 # IBF Comic Translator Local
 
+[🇬🇧 English](README_en.md) | [🇨🇳 中文](README_zh.md)
+
 Локальный переводчик комиксов прямо из браузера.
 
 Проект состоит из двух частей:

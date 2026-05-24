@@ -350,15 +350,28 @@ def process_image_bytes(
     translator_started = perf_counter()
     translator = get_translator()
 
+    # Известные водяные знаки и подписи авторов
+    _WATERMARK_TOKENS = frozenset([
+        "pixiv", "twitter", "patreon", "instagram", "fanbox",
+        "deviantart", "artstation", "webtoon", "tapas",
+        "©", "copyright", "all rights reserved",
+    ])
+
+    # Известные короткие повторы — не мусор
+    _KNOWN_REPEATS = frozenset(["haha", "mama", "papa", "nana", "lala", "wawa", "baba", "dada"])
+
     def _looks_translatable(text: str) -> bool:
         """Фильтрует мусор: одиночные символы, коды, артефакты OCR.
 
-        Правила (все должны выполняться):
+        Правила:
         - минимум 2 символа
         - доля буквенно-цифровых символов >= 40%
-        - минимум 2 буквы (одна буква + спецсимвол типа "T#" — мусор)
-        - не состоит целиком из повторяющегося символа (напр. "####")
-        - не содержит артефакты OCR типа "$\\}$", "[]", "{}" внутри слов
+        - минимум 2 буквы
+        - не повторяющийся символ ("####", "....")
+        - не артефакты OCR ("\\\\", "$...$", "{}", "[]")
+        - не набор одиночных букв ("W B", "V T", "HM? J")
+        - не повторяющийся слог ("ofof", "abab")
+        - не водяной знак/подпись ("pixiv MadBull")
         """
         text = (text or "").strip()
         if len(text) < 2:
@@ -366,22 +379,45 @@ def process_image_bytes(
         alnum = sum(c.isalnum() for c in text)
         if alnum / len(text) < 0.40:
             return False
-        # Требуем минимум 2 буквы — иначе "T#", "A1", "Z." — мусор
         letters = sum(c.isalpha() for c in text)
         if letters < 2:
             return False
-        # Повторяющийся символ: "###", "...", "___" и т.п.
         if len(set(text.replace(" ", ""))) <= 1:
             return False
-        # Артефакты OCR: "\", "$...$", "{}", "[]" внутри текста
         if "\\" in text:
             return False
         if re.search(r'\$[^$]*\$', text):
             return False
         if re.search(r'[\{\}\[\]]', text):
             return False
-        return True
 
+        # Набор одиночных букв: "W B", "V T", "HM? J"
+        words = text.split()
+        alpha_words = [re.sub(r'[^a-zA-Z\u0400-\u04FF\u3040-\u30FF\u4E00-\u9FFF]', '', w)
+                       for w in words]
+        alpha_words = [w for w in alpha_words if w]
+        if alpha_words and all(len(w) == 1 for w in alpha_words):
+            return False
+        if len(alpha_words) >= 2:
+            single_ratio = sum(1 for w in alpha_words if len(w) == 1) / len(alpha_words)
+            # Для коротких фраз (≤ 3 слов) порог ниже: "HM? J" → 1/2 = 0.5 → skip
+            threshold = 0.5 if len(alpha_words) <= 3 else 0.6
+            if single_ratio >= threshold:
+                return False
+
+        # Повторяющийся слог: "ofof", "abab" (но не "haha", "mama")
+        t_clean = text.lower().replace(" ", "")
+        if 4 <= len(t_clean) <= 8 and t_clean.isalpha() and t_clean not in _KNOWN_REPEATS:
+            half = len(t_clean) // 2
+            if t_clean[:half] == t_clean[half:half * 2]:
+                return False
+
+        # Водяные знаки / подписи авторов
+        text_lower = text.lower()
+        if any(token in text_lower for token in _WATERMARK_TOKENS):
+            return False
+
+        return True
     texts = [block.source_text for block in blocks]
     for i, text in enumerate(texts, start=1):
         status = "OK" if _looks_translatable(text) else "SKIP"
