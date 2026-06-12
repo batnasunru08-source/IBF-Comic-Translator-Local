@@ -228,9 +228,6 @@ server/
   app/              Основной код (OCR, перевод, рендер)
   models/           GGUF-модели (скачиваются через download-model.sh)
   results/          Результаты переводов
-  requirements.txt
-  download-model.sh
-  install-linux-gpu.sh
 README.md
 ```
 
