@@ -226,9 +226,6 @@ server/
   app/              Main code (OCR, translation, rendering)
   models/           GGUF models (downloaded via download-model.sh)
   results/          Translation results
-  requirements.txt
-  download-model.sh
-  install-linux-gpu.sh
 README.md
 ```
 
