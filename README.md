@@ -77,27 +77,8 @@ pip install -U pip setuptools wheel
 pip install -r requirements-cpu.txt
 ```
 
-### 5. llama-cpp-python (GPU)
 
-С версии скрипта `install-linux-gpu.sh` шаг выполняется автоматически: скрипт сам определяет архитектуру вашей GPU через `nvidia-smi` и пересобирает `llama-cpp-python` с нужным `CMAKE_CUDA_ARCHITECTURES`. Отдельно делать ничего не нужно.
-
-Если хотите указать архитектуру вручную (например, для нестандартной GPU):
-```bash
-nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
-# Пример: NVIDIA GeForce RTX 3090, 8.6  →  86
-#          NVIDIA GeForce RTX 4090, 8.9  →  89
-#          NVIDIA GeForce RTX 5070 Ti, 12.0 → 120
-
-CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86" \
-    pip install llama-cpp-python --no-cache-dir --force-reinstall --upgrade --no-deps
-```
-
-**CPU:**
-```bash
-pip install llama-cpp-python
-```
-
-### 6. Скачать модель перевода
+### 5. Скачать модель перевода
 
 ```bash
 bash download-model.sh
