@@ -226,9 +226,6 @@ server/
   app/              核心代码（OCR、翻译、渲染）
   models/           GGUF 模型（通过 download-model.sh 下载）
   results/          翻译结果
-  requirements.txt
-  download-model.sh
-  install-linux-gpu.sh
 README.md
 ```
 
