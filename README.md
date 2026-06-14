@@ -23,8 +23,8 @@
 - 4 GB RAM минимум (8 GB+ рекомендуется)
 
 Для GPU-режима дополнительно:
-- NVIDIA GPU (в системе должен быть установлены последние драйвера и [CUDA Toolkin 13.3](https://developer.nvidia.com/cuda-downloads))
-- Установленный NVIDIA драйвер + `nvidia-smi`
+- NVIDIA GPU ([CUDA Toolkin 13.3](https://developer.nvidia.com/cuda-downloads))
+- Последний установленный [NVIDIA драйвер](https://www.nvidia.com/en-us/drivers/)
 
 Проверьте базовое окружение перед установкой:
 
