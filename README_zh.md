@@ -115,32 +115,6 @@ pip install -r requirements-cpu.txt
 bash install-linux-gpu.sh
 ```
 
-### 6. 安装 llama-cpp-python
-
-此包需要单独安装 — 编译取决于你的硬件。
-
-**GPU (CUDA)：**
-
-首先查看你的 GPU 架构：
-```bash
-nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
-# 示例：NVIDIA GeForce RTX 3090, 8.6  →  86
-#       NVIDIA GeForce RTX 4090, 8.9  →  89
-#       NVIDIA GeForce RTX 2080, 7.5  →  75
-```
-
-然后指定架构安装：
-```bash
-# 将 86 替换为你上面的架构编号
-CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86" \
-    pip install llama-cpp-python --no-cache-dir
-```
-
-**CPU 模式：**
-```bash
-pip install llama-cpp-python
-```
-
 ---
 
 ## 启动服务器
