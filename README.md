@@ -23,7 +23,7 @@
 - 4 GB RAM минимум (8 GB+ рекомендуется)
 
 Для GPU-режима дополнительно:
-- NVIDIA GPU (любая с CUDA 11.8+)
+- NVIDIA GPU (в системе должен быть установлены последние драйвера и [CUDA Toolkin 13.3](https://developer.nvidia.com/cuda-downloads))
 - Установленный NVIDIA драйвер + `nvidia-smi`
 
 Проверьте базовое окружение перед установкой:
@@ -45,7 +45,7 @@ bash download-model.sh
 docker compose --profile cpu up -d --build
 ```
 
-### Для режима GPU (в системе должен быть установлены последние драйвера и [CUDA Toolkin 13.3](https://developer.nvidia.com/cuda-downloads))
+### Для режима GPU
 ```bash
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
