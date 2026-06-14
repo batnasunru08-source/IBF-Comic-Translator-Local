@@ -1,5 +1,7 @@
 # IBF Comic Translator Local
 
+[🇷🇺 Русский](README.md) | [🇨🇳 中文](README_zh.md)
+
 A local comic translator running directly in your browser.
 
 The project consists of two parts:
@@ -21,14 +23,38 @@ The project consists of two parts:
 - 4 GB RAM minimum (8 GB+ recommended)
 
 For GPU mode additionally:
-- NVIDIA GPU (any with CUDA 11.8+)
-- NVIDIA driver installed + `nvidia-smi`
+- NVIDIA GPU ([CUDA Toolkit 13.3](https://developer.nvidia.com/cuda-downloads))
+- Latest [NVIDIA driver](https://www.nvidia.com/en-us/drivers/) installed
 
 Check your environment before installation:
 
 ```bash
-python3 --version   # requires 3.12
+python3 --version   # requires 3.12 (use pyenv to install a specific version)
 nvidia-smi          # GPU mode only
+```
+
+---
+
+## Quick start with Docker
+
+### CPU mode
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+docker compose --profile cpu up -d --build
+```
+
+### GPU mode
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+CUDA_ARCH=120 docker compose --profile gpu up -d --build
+```
+To find your CUDA_ARCH, run:
+```bash
+nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.'
 ```
 
 ---
@@ -56,17 +82,26 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 4. Python dependencies
+### 4. Download the translation model
+
+```bash
+bash download-model.sh
+```
+
+The script downloads `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) to `server/models/`.
+
+For a lighter version:
+```bash
+bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
+bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
+```
+
+### 5. Python dependencies
 
 From the `server/` directory:
 
 ```bash
 cd server
-```
-
-**GPU:**
-```bash
-bash install-linux-gpu.sh
 ```
 
 **CPU:**
@@ -75,7 +110,12 @@ pip install -U pip setuptools wheel
 pip install -r requirements-cpu.txt
 ```
 
-### 5. llama-cpp-python
+**GPU:**
+```bash
+bash install-linux-gpu.sh
+```
+
+### 6. llama-cpp-python
 
 This package must be installed separately — the build depends on your hardware.
 
@@ -99,20 +139,6 @@ CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86" \
 **CPU:**
 ```bash
 pip install llama-cpp-python
-```
-
-### 6. Download translation model
-
-```bash
-bash download-model.sh
-```
-
-The script downloads `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) to `server/models/`.
-
-For a lighter version:
-```bash
-bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
-bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
 ```
 
 ---
