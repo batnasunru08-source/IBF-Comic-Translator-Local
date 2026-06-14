@@ -80,7 +80,23 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 4. Python-зависимости
+
+### 4. Скачать модель перевода
+
+```bash
+bash download-model.sh
+```
+
+Скрипт скачает `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) в папку `server/models/`.
+
+Если нужна более лёгкая версия:
+```bash
+bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
+bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
+```
+
+
+### 5. Python-зависимости
 
 Из папки `server/`:
 
@@ -100,19 +116,6 @@ pip install -r requirements-cpu.txt
 ```
 
 
-### 5. Скачать модель перевода
-
-```bash
-bash download-model.sh
-```
-
-Скрипт скачает `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) в папку `server/models/`.
-
-Если нужна более лёгкая версия:
-```bash
-bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
-bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
-```
 
 ---
 
