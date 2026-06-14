@@ -115,32 +115,6 @@ pip install -r requirements-cpu.txt
 bash install-linux-gpu.sh
 ```
 
-### 6. llama-cpp-python
-
-This package must be installed separately — the build depends on your hardware.
-
-**GPU (CUDA):**
-
-First, find your GPU architecture:
-```bash
-nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader
-# Example: NVIDIA GeForce RTX 3090, 8.6  →  86
-#          NVIDIA GeForce RTX 4090, 8.9  →  89
-#          NVIDIA GeForce RTX 2080, 7.5  →  75
-```
-
-Then install with the architecture specified:
-```bash
-# Replace 86 with your architecture from the output above
-CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86" \
-    pip install llama-cpp-python --no-cache-dir
-```
-
-**CPU:**
-```bash
-pip install llama-cpp-python
-```
-
 ---
 
 ## Running the server
