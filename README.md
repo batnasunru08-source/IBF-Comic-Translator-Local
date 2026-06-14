@@ -41,6 +41,7 @@ nvidia-smi          # только для GPU-режима
 ```bash
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
 docker compose --profile cpu up -d --build
 ```
 
@@ -48,6 +49,7 @@ docker compose --profile cpu up -d --build
 ```bash
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
 CUDA_ARCH=120 docker compose --profile gpu up -d --build
 ```
 Чтобы узнать CUDA_ARCH введите
