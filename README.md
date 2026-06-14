@@ -104,18 +104,16 @@ bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
 cd server
 ```
 
-**GPU:**
-```bash
-bash install-linux-gpu.sh
-```
-
 **CPU:**
 ```bash
 pip install -U pip setuptools wheel
 pip install -r requirements-cpu.txt
 ```
 
-
+**GPU:**
+```bash
+bash install-linux-gpu.sh
+```
 
 ---
 
