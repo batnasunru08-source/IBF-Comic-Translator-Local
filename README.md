@@ -50,7 +50,7 @@ git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
 CUDA_ARCH=120 docker compose --profile gpu up -d --build
 ```
-Чтобы узнать CUDA_ARCH
+Чтобы узнать CUDA_ARCH введите
 ```nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.'```
 
 
