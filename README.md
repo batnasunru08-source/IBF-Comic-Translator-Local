@@ -53,6 +53,7 @@ bash download-model.sh
 CUDA_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.') docker compose --profile gpu up -d --build
 ```
 
+---
 
 ## Установка
 
