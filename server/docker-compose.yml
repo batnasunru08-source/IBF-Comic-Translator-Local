@@ -1,0 +1,35 @@
+services:
+  translator-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        CUDA_ARCH: ${CUDA_ARCH:-120}
+    container_name: ibf-translator
+    profiles: ["gpu", "default"]
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./models:/app/models
+      - ./results:/app/results
+    restart: unless-stopped
+
+  translator-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: ibf-translator-cpu
+    profiles: ["cpu"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./results:/app/results
+    restart: unless-stopped
