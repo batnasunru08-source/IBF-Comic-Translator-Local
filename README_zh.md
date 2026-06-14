@@ -1,5 +1,7 @@
 # IBF Comic Translator Local
 
+[🇬🇧 English](README_en.md) | [🇷🇺 Русский](README.md)
+
 直接在浏览器中运行的本地漫画翻译工具。
 
 项目由两部分组成：
@@ -21,14 +23,38 @@
 - 最少 4 GB 内存（推荐 8 GB+）
 
 GPU 模式额外要求：
-- NVIDIA GPU（支持 CUDA 11.8+ 即可）
-- 已安装 NVIDIA 驱动 + `nvidia-smi`
+- NVIDIA GPU（[CUDA Toolkit 13.3](https://developer.nvidia.com/cuda-downloads)）
+- 已安装最新的 [NVIDIA 驱动](https://www.nvidia.com/en-us/drivers/)
 
 安装前检查环境：
 
 ```bash
-python3 --version   # 需要 3.12
+python3 --version   # 需要 3.12（如需安装特定版本，请使用 pyenv）
 nvidia-smi          # 仅 GPU 模式需要
+```
+
+---
+
+## 使用 Docker 快速开始
+
+### CPU 模式
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+docker compose --profile cpu up -d --build
+```
+
+### GPU 模式
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+CUDA_ARCH=120 docker compose --profile gpu up -d --build
+```
+查看 CUDA_ARCH 的方法：
+```bash
+nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.'
 ```
 
 ---
@@ -56,17 +82,26 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 4. 安装 Python 依赖
+### 4. 下载翻译模型
+
+```bash
+bash download-model.sh
+```
+
+脚本会将 `Hy-MT2-1.8B-Q8_0.gguf`（约 1.9 GB）下载到 `server/models/` 目录。
+
+如需更轻量的版本：
+```bash
+bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
+bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
+```
+
+### 5. 安装 Python 依赖
 
 在 `server/` 目录下：
 
 ```bash
 cd server
-```
-
-**GPU 模式：**
-```bash
-bash install-linux-gpu.sh
 ```
 
 **CPU 模式：**
@@ -75,7 +110,12 @@ pip install -U pip setuptools wheel
 pip install -r requirements-cpu.txt
 ```
 
-### 5. 安装 llama-cpp-python
+**GPU 模式：**
+```bash
+bash install-linux-gpu.sh
+```
+
+### 6. 安装 llama-cpp-python
 
 此包需要单独安装 — 编译取决于你的硬件。
 
@@ -99,20 +139,6 @@ CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=86" \
 **CPU 模式：**
 ```bash
 pip install llama-cpp-python
-```
-
-### 6. 下载翻译模型
-
-```bash
-bash download-model.sh
-```
-
-脚本会将 `Hy-MT2-1.8B-Q8_0.gguf`（约 1.9 GB）下载到 `server/models/` 目录。
-
-如需更轻量的版本：
-```bash
-bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
-bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
 ```
 
 ---
