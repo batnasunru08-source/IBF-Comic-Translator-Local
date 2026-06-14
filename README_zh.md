@@ -50,12 +50,9 @@ docker compose --profile cpu up -d --build
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
 bash download-model.sh
-CUDA_ARCH=120 docker compose --profile gpu up -d --build
+CUDA_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.') docker compose --profile gpu up -d --build
 ```
-查看 CUDA_ARCH 的方法：
-```bash
-nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.'
-```
+
 
 ---
 
