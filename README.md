@@ -45,7 +45,7 @@ bash download-model.sh
 docker compose --profile cpu up -d --build
 ```
 
-### Для режима GPU (в системе должен быть установлен  CUDA Toolkin 13.3 https://developer.nvidia.com/cuda-downloads)
+### Для режима GPU (в системе должен быть установлены последние драйвера и [CUDA Toolkin 13.3](https://developer.nvidia.com/cuda-downloads))
 ```bash
 git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
 cd IBF-Comic-Translator-Local/server/
