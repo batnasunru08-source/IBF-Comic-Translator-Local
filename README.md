@@ -35,7 +35,27 @@ nvidia-smi          # только для GPU-режима
 
 ---
 
+## Быстрый старт с помощью docker
+
+### Для режима СPU
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+docker compose --profile cpu up -d --build
+```
+
+### Для режима GPU (в системе должен быть установлен  CUDA Toolkin 13.3 https://developer.nvidia.com/cuda-downloads)
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+CUDA_ARCH=120 docker compose --profile gpu up -d --build
+```
+Чтобы узнать CUDA_ARCH
+```nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.'```
+
+
 ## Установка
+
 
 ### 1. Клонировать репозиторий
 
