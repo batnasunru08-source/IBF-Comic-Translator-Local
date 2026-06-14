@@ -49,7 +49,8 @@ class HyMt2Translator:
             raise RuntimeError(
                 "llama-cpp-python не установлен.\n"
                 "CPU: pip install llama-cpp-python\n"
-                "GPU: CMAKE_ARGS='-DGGML_CUDA=on' pip install llama-cpp-python"
+                "GPU (Vulkan): CMAKE_ARGS='-DGGML_VULKAN=on' pip install llama-cpp-python --no-cache-dir\n"
+                "GPU (CUDA): CMAKE_ARGS='-DGGML_CUDA=on' pip install llama-cpp-python --no-cache-dir"
             )
 
         n_gpu_layers = self._pick_gpu_layers()
@@ -65,13 +66,10 @@ class HyMt2Translator:
 
     @staticmethod
     def _pick_gpu_layers() -> int:
-        try:
-            import torch
-            if torch.cuda.is_available():
-                return -1
-        except Exception:
-            pass
-        return 0
+        # Не завязываемся на torch/CUDA — Vulkan-сборка llama-cpp-python
+        # сама определит наличие GPU. Если GPU нет, llama.cpp откатится
+        # на CPU автоматически, поэтому всегда просим максимум слоёв.
+        return -1
 
     def _call(self, prompt: str, max_tokens: int = _MAX_TOKENS) -> str:
         output = self._llm.create_chat_completion(

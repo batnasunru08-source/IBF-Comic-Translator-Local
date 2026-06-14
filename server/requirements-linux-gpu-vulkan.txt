@@ -1,0 +1,9 @@
+-r requirements.txt
+
+# torch + torchvision (нужны для PaddleOCR transformers backend).
+# CUDA не требуется — Vulkan-сборка llama-cpp-python работает независимо от torch.
+torch>=2.7.0
+torchvision>=0.20.0
+
+# llama-cpp-python собирается отдельно с Vulkan (см. install-linux-gpu-vulkan.sh):
+#   CMAKE_ARGS="-DGGML_VULKAN=on" pip install llama-cpp-python --no-cache-dir --force-reinstall --no-deps
