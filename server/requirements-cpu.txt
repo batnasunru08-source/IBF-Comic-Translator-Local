@@ -5,4 +5,4 @@ torch>=2.7.0
 torchvision>=0.20.0
 
 # llama-cpp-python CPU build
-llama-cpp-python
+#llama-cpp-python
