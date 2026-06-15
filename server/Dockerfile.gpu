@@ -4,45 +4,40 @@ FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Install Python 3.12 and build dependencies
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y \
+# Ubuntu 24.04 уже содержит Python 3.12 в официальных репозиториях.
+# PPA deadsnakes здесь избыточен и только замедляет сборку.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
     build-essential \
     cmake \
     git \
-    wget \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
-
-# Create venv and activate it
+# Создаем виртуальное окружение
 RUN python3.12 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install uv (fast pip replacement)
-RUN pip install --no-cache-dir uv
+# Установка uv через официальный скрипт (быстрее и надежнее, чем через pip)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV UV_LINK_MODE=copy
 
-# Copy dependency files and install script
-COPY requirements.txt requirements-linux-gpu.txt ./
-COPY install-linux-gpu_docker.sh .
+# Копируем только файлы зависимостей для максимального использования кэша Docker
+COPY requirements.txt requirements-linux-gpu.txt install-linux-gpu_docker.sh ./
 RUN chmod +x install-linux-gpu_docker.sh
 
-# GPU architecture for llama-cpp-python (CMAKE_CUDA_ARCHITECTURES).
-# Override at build time, e.g.: --build-arg CUDA_ARCH=120 (RTX 50xx / Blackwell)
+# Архитектура GPU для llama-cpp-python
 ARG CUDA_ARCH=120
 ENV CUDA_ARCH=${CUDA_ARCH}
 
-# Run the installer (which now uses uv internally)
+# Запускаем установку и очищаем кэш В ОДНОМ СЛОЕ, чтобы не раздувать образ
 RUN bash install-linux-gpu_docker.sh \
     && find /opt/venv -name "*.a" -delete \
     && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + \
-    && rm -rf /root/.cache /tmp/*
+    && rm -rf /root/.cache /tmp/* /var/tmp/*
 
 # ---------- Runtime stage ----------
 FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
@@ -52,11 +47,9 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Runtime-only system dependencies
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y \
+# Устанавливаем только runtime-зависимости. --no-install-recommends экономит место.
+# Python 3.12 также берем из родного репозитория Ubuntu 24.04.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     libgl1 \
     libglib2.0-0 \
@@ -66,20 +59,14 @@ RUN apt-get update && apt-get install -y \
     fonts-noto-cjk \
     fonts-dejavu-core \
     fonts-liberation2 \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
-
-# Copy the prepared virtualenv from the build stage
+# Копируем готовое виртуальное окружение из стадии сборки
 COPY --from=build /opt/venv /opt/venv
 
 WORKDIR /app
+# Копируем исходный код (убедитесь, что у вас есть правильный .dockerignore)
 COPY . .
-
-# Download model (optional, uncomment if needed)
-# RUN bash download-model.sh
-
-EXPOSE 8000
 
 CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

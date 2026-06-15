@@ -4,8 +4,8 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "[INSTALL] Installing uv (fast pip replacement)..."
-pip install -U uv
+#echo "[INSTALL] Installing uv (fast pip replacement)..."
+#pip install -U uv
 
 echo "[INSTALL] Installing base requirements with uv..."
 uv pip install -r requirements-linux-gpu.txt \
