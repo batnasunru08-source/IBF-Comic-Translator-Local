@@ -1,5 +1,5 @@
 # ---------- Build stage ----------
-FROM nvidia/cuda:13.3.0-devel-ubuntu24.04 AS build
+FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -21,26 +21,31 @@ RUN apt-get update && apt-get install -y \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 
-# Create venv and use it for all subsequent pip installs
+# Create venv and activate it
 RUN python3.12 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN pip install --upgrade pip setuptools wheel
-COPY requirements.txt .
+# Install uv (fast pip replacement)
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files and install script
+COPY requirements.txt requirements-linux-gpu.txt ./
 COPY install-linux-gpu_docker.sh .
+RUN chmod +x install-linux-gpu_docker.sh
 
 # GPU architecture for llama-cpp-python (CMAKE_CUDA_ARCHITECTURES).
 # Override at build time, e.g.: --build-arg CUDA_ARCH=120 (RTX 50xx / Blackwell)
 ARG CUDA_ARCH=120
 ENV CUDA_ARCH=${CUDA_ARCH}
 
+# Run the installer (which now uses uv internally)
 RUN bash install-linux-gpu_docker.sh \
     && find /opt/venv -name "*.a" -delete \
     && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + \
     && rm -rf /root/.cache /tmp/*
 
 # ---------- Runtime stage ----------
-FROM nvidia/cuda:13.3.0-runtime-ubuntu24.04
+FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -72,8 +77,8 @@ COPY --from=build /opt/venv /opt/venv
 WORKDIR /app
 COPY . .
 
-# Download model (defaulting to Q8_0)
-#RUN bash download-model.sh
+# Download model (optional, uncomment if needed)
+# RUN bash download-model.sh
 
 EXPOSE 8000
 
