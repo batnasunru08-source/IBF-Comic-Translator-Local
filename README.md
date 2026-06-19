@@ -201,22 +201,6 @@ python -c "from llama_cpp import Llama; print('OK')"
 
 ---
 
-## Опционально: PatchMatch inpaint
-
-PatchMatch улучшает качество стирания текста на сложных фонах.
-
-```bash
-sudo apt install -y build-essential git pkg-config libopencv-dev
-cd server
-bash install-patchmatch.sh
-export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-Если PatchMatch недоступен — сервер автоматически переключается на TELEA.
-
----
-
 ## Структура проекта
 
 ```
