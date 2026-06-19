@@ -111,8 +111,6 @@ def _resolve_font_path(lang_key: str) -> str | None:
     с кешем это происходит один раз на язык за весь процесс.
     """
     candidates = FONT_CANDIDATES.get(lang_key, FONT_CANDIDATES["default"])
-    if lang_key != "default":
-        candidates = candidates + FONT_CANDIDATES["default"]
     return first_existing_path(candidates)
 
 
@@ -275,7 +273,7 @@ def _build_local_text_mask(crop_rgb: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Inpaint: PatchMatch + TELEA fallback + кеш масок (приоритеты 🔴🟡)
+# Inpaint: TELEA на crop-ах + кеш масок (приоритеты 🔴🟡)
 # ---------------------------------------------------------------------------
 
 def build_inpaint_mask(
@@ -336,9 +334,8 @@ def inpaint_text(
 ) -> tuple[np.ndarray, dict[int, np.ndarray]]:
     """Стирает текст по каждому блоку отдельно (crop-inpaint).
 
-    Всегда используем TELEA на crop-ах — это быстро (десятки мс на блок)
-    и качественно для небольших областей. PatchMatch на CPU слишком
-    медленный даже на маленьких crop-ах (~10-60с на блок).
+    Используем TELEA на crop-ах — это быстро (десятки мс на блок)
+    и качественно для небольших областей.
     """
     from time import perf_counter
 
@@ -436,7 +433,7 @@ def _fit_text(draw, text, max_width, max_height):
     кандидата проверяем соседей вверх чтобы не пропустить лучший fit.
     """
     lo = 11
-    hi = max(14, min(42, int(max_height * 0.78)))
+    hi = max(14, min(42, int(max_height * 0.70)))
 
     best: tuple | None = None
 
@@ -479,25 +476,6 @@ def _median_color(pixels, fallback):
     return tuple(int(round(v)) for v in np.median(pixels, axis=0))
 
 
-def _canonicalize_color(color):
-    if _luma(color) <= 20:
-        return (0, 0, 0)
-    if _luma(color) >= 235:
-        return (255, 255, 255)
-    return color
-
-
-def _color_distance(a, b):
-    return float(np.linalg.norm(np.array(a, dtype=np.float32) - np.array(b, dtype=np.float32)))
-
-
-def _fallback_text_colors(roi_rgb):
-    bg = _median_color(roi_rgb.reshape(-1, 3), (255, 255, 255))
-    if _luma(bg) >= 150:
-        return (0, 0, 0), (255, 255, 255), bg
-    return (255, 255, 255), (0, 0, 0), bg
-
-
 def _sample_border_pixels(roi_rgb, border=4):
     """Сэмплирует пиксели по краям roi — там гарантированно фон (приоритет 🔴)."""
     h, w = roi_rgb.shape[:2]
@@ -511,64 +489,15 @@ def _sample_border_pixels(roi_rgb, border=4):
     return np.concatenate([top, bottom, left, right], axis=0)
 
 
-def _pick_text_style(roi_rgb, cached_mask=None):
-    """Определяет (fill, stroke_fill, background).
+def _pick_text_colors(roi_rgb: np.ndarray) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Возвращает (fill, background) в черно-белой схеме.
 
-    cached_mask позволяет пропустить повторное вычисление маски (приоритет 🟡).
-    Фон сэмплируется по краям roi из оригинала (приоритет 🔴).
+    Фон сэмплируется по краям roi, чтобы не попасть на остатки текста.
     """
-    mask = cached_mask if cached_mask is not None else _build_local_text_mask(roi_rgb)
-
-    border_pixels = _sample_border_pixels(roi_rgb)
-    bg_from_border = _canonicalize_color(_median_color(border_pixels, (255, 255, 255)))
-
-    if np.count_nonzero(mask) == 0:
-        bg = bg_from_border
-        if _luma(bg) >= 150:
-            return (0, 0, 0), (255, 255, 255), bg
-        return (255, 255, 255), (0, 0, 0), bg
-
-    dilated = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)), iterations=1)
-    ring = cv2.bitwise_and(dilated, cv2.bitwise_not(mask))
-
-    text_pixels = roi_rgb[mask > 0]
-    bg_pixels   = roi_rgb[ring > 0]
-    if bg_pixels.size == 0:
-        bg_pixels = roi_rgb[mask == 0]
-
-    if text_pixels.size == 0 or bg_pixels.size == 0:
-        return _fallback_text_colors(roi_rgb)
-
-    bg_from_ring = _canonicalize_color(_median_color(bg_pixels, (255, 255, 255)))
-    # Предпочитаем border-медиану если они согласуются (стабильнее)
-    bg = bg_from_border if _color_distance(bg_from_border, bg_from_ring) < 80 else bg_from_ring
-
-    text_luma = 0.299 * text_pixels[:, 0] + 0.587 * text_pixels[:, 1] + 0.114 * text_pixels[:, 2]
-    bg_luma = _luma(bg)
-
-    if float(np.mean(text_luma)) <= bg_luma:
-        cutoff = np.quantile(text_luma, 0.45)
-        fill_pixels = text_pixels[text_luma <= cutoff]
-    else:
-        cutoff = np.quantile(text_luma, 0.55)
-        fill_pixels = text_pixels[text_luma >= cutoff]
-
-    fill   = _canonicalize_color(_median_color(fill_pixels, (0, 0, 0)))
-    stroke = bg
-
-    if _color_distance(fill, stroke) < 60:
-        return _fallback_text_colors(roi_rgb)
-
-    return fill, stroke, bg
-
-
-def _pick_stroke_width(font_size, fill, background):
-    contrast = _color_distance(fill, background)
-    if contrast >= 180:
-        return 0
-    if contrast >= 115:
-        return 1 if font_size < 24 else 2
-    return 2 if font_size < 28 else 3
+    bg = _median_color(_sample_border_pixels(roi_rgb), (255, 255, 255))
+    if _luma(bg) >= 128:
+        return (0, 0, 0), (255, 255, 255)
+    return (255, 255, 255), (0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -689,36 +618,27 @@ def render_translations(
 
         font, wrapped, text_w, text_h = _fit_text(draw, block.translated_text, max_width, max_height)
 
-        # Цвет берём из оригинала (приоритет 🔴)
+        # Цвета: чёрный текст на светлом фоне или белый на тёмном.
         style_roi = style_source[ty1:ty2, tx1:tx2]
-        local_mask_roi = cached_block_mask[ty1:ty2, tx1:tx2] if cached_block_mask is not None else None
-
-        fill, stroke_fill, background = _pick_text_style(style_roi, cached_mask=local_mask_roi)
+        fill, bg_color = _pick_text_colors(style_roi)
 
         text_x = tx1 + (max_width - text_w) / 2
         text_y = ty1 + (max_height - text_h) / 2
 
-        font_size    = getattr(font, "size", 14)
-        spacing      = max(4, int(round(font_size * 0.25)))
-        stroke_width = _pick_stroke_width(font_size, fill, background)
+        font_size = getattr(font, "size", 14)
+        spacing   = max(4, int(round(font_size * 0.25)))
 
-        bg_luma = _luma(background)
+        pad_bg_x = max(18, int(font_size * 1.2))
+        pad_bg_y = max(12, int(font_size * 0.8))
+        bg_x1 = int(text_x - pad_bg_x)
+        bg_y1 = int(text_y - pad_bg_y)
+        bg_x2 = int(text_x + text_w + pad_bg_x)
+        bg_y2 = int(text_y + text_h + pad_bg_y)
 
-        # Непрозрачная подложка: светлый фон → чёрный текст, тёмный фон → белый текст.
-        pad_bg = max(6, font_size // 4)
-        bg_x1 = int(text_x - pad_bg)
-        bg_y1 = int(text_y - pad_bg)
-        bg_x2 = int(text_x + text_w + pad_bg)
-        bg_y2 = int(text_y + text_h + pad_bg)
-
-        if bg_luma >= 128:
-            fill = (0, 0, 0)
-            bg_color = (255, 255, 255)
-        else:
-            fill = (255, 255, 255)
-            bg_color = (0, 0, 0)
-
-        draw.rectangle([bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color)
+        bubble_w = bg_x2 - bg_x1
+        bubble_h = bg_y2 - bg_y1
+        radius = max(8, min(bubble_w, bubble_h) // 2)
+        draw.rounded_rectangle([bg_x1, bg_y1, bg_x2, bg_y2], radius=radius, fill=bg_color)
 
         draw.multiline_text(
             (text_x, text_y), wrapped, font=font, fill=fill,
