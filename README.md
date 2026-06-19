@@ -83,16 +83,18 @@ source .venv/bin/activate
 ### 4. Скачать модель перевода
 
 ```bash
-bash download-model.sh
+bash download-model.sh            # 1.8B Q8_0 (~1.9 GB) — по умолчанию
+bash download-model.sh 7b         # 7B   Q8_0 (~8.0 GB)
 ```
 
-Скрипт скачает `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) в папку `server/models/`.
-
-Если нужна более лёгкая версия:
+Если нужна более лёгкая/компактная версия — укажите квант вторым аргументом:
 ```bash
-bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
-bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
+bash download-model.sh 1.8b q4_k_m    # 1.8B Q4_K_M (~1.1 GB)
+bash download-model.sh 1.8b q2_k      # 1.8B Q2_K   (~0.7 GB)
+bash download-model.sh 7b   q4_k_m    # 7B   Q4_K_M (~4.6 GB)
+bash download-model.sh 7b   q6_k      # 7B   Q6_K   (~6.2 GB)
 ```
+
 
 
 ### 5. Python-зависимости
@@ -121,8 +123,14 @@ bash install-linux-gpu.sh
 ```bash
 cd server
 source ../.venv/bin/activate
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000                  # 1.8B (по умолчанию)
+MODEL_FILE=HY-MT2-7B-Q8_0.gguf python -m uvicorn main:app --host 0.0.0.0 --port 8000   # 7B
 ```
+
+Выбор модели — через переменную окружения `MODEL_FILE`. По умолчанию `Hy-MT2-1.8B-Q8_0.gguf`. Перед запуском 7B убедитесь, что соответствующий `.gguf` уже скачан (`bash download-model.sh 7b`).
+
+В `docker-compose.yml` модель переключается добавлением строки `MODEL_FILE=HY-MT2-7B-Q8_0.gguf` в `environment:`.
+
 
 При первом запуске сервер скачает модели PaddleOCR (~200 MB). Это займёт 1–2 минуты.
 
