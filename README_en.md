@@ -198,22 +198,6 @@ With GPU build, the model loading logs should show `ggml_cuda_init: found N CUDA
 
 ---
 
-## Optional: PatchMatch inpaint
-
-PatchMatch improves text erasing quality on complex backgrounds.
-
-```bash
-sudo apt install -y build-essential git pkg-config libopencv-dev
-cd server
-bash install-patchmatch.sh
-export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-If PatchMatch is unavailable, the server automatically falls back to TELEA.
-
----
-
 ## Project structure
 
 ```
