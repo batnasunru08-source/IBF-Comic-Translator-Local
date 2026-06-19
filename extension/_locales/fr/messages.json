@@ -15,6 +15,14 @@
     "message": "Activer l'extension",
     "description": "Étiquette de la case"
   },
+  "popup_auto_translate": {
+    "message": "Traduire automatiquement les images de la page",
+    "description": "Étiquette de la case traduction auto"
+  },
+  "popup_auto_hint": {
+    "message": "Les traductions démarrent sans cliquer sur chaque bouton.",
+    "description": "Astuce traduction auto"
+  },
   "popup_mode_title": {
     "message": "Mode d'affichage",
     "description": "Titre de la section mode"
@@ -39,6 +47,14 @@
     "message": "La langue du texte affecte l'OCR.\nLa langue de traduction affecte la sortie du modèle.",
     "description": "Texte d'aide"
   },
+  "popup_api_base": {
+    "message": "URL du serveur API",
+    "description": "Étiquette du champ URL du serveur API"
+  },
+  "popup_api_hint": {
+    "message": "Modifiez si le serveur tourne sur un autre hôte ou port.",
+    "description": "Texte d'aide pour le champ URL du serveur API"
+  },
   "button_translate": {
     "message": "Traduire l'image",
     "description": "Infobulle du bouton"
@@ -46,6 +62,34 @@
   "button_label": {
     "message": "IBF",
     "description": "Texte du bouton"
+  },
+  "button_revert": {
+    "message": "Original",
+    "description": "Texte du bouton quand la traduction est affichée, clic pour revenir"
+  },
+  "progress_capturing": {
+    "message": "⏳",
+    "description": "Texte du bouton pendant la capture"
+  },
+  "progress_sending": {
+    "message": "📤",
+    "description": "Texte du bouton pendant l'envoi"
+  },
+  "server_checking": {
+    "message": "Vérification du serveur…",
+    "description": "Statut du serveur pendant la vérification"
+  },
+  "server_online": {
+    "message": "Serveur en ligne",
+    "description": "Statut du serveur quand il est joignable"
+  },
+  "server_offline": {
+    "message": "Serveur hors ligne",
+    "description": "Statut du serveur quand il est injoignable"
+  },
+  "context_translate": {
+    "message": "Traduire avec Comic Translator",
+    "description": "Titre de l'élément du menu contextuel"
   },
   "error_translate": {
     "message": "Erreur de traduction : $ERROR$",

@@ -5,6 +5,7 @@ const MAX_CAPTURE_DIMENSION = 2200;
 
 const SETTINGS = {
   enabled: true,
+  autoTranslate: false,
   renderMode: "replace",
   sourceOcrLang: "en",
   targetLang: "Russian"
@@ -71,13 +72,12 @@ function waitForImageReady(img) {
 
 function guessCanvasMime(imageUrl) {
   const url = String(imageUrl || "").toLowerCase();
-  if (/\.png(\?|#|$)/i.test(url)) {
-    return "image/png";
-  }
-  if (/\.webp(\?|#|$)/i.test(url)) {
-    return "image/webp";
-  }
-  return "image/jpeg";
+  if (/\.png(\?|#|$)/i.test(url)) return "image/png";
+  if (/\.webp(\?|#|$)/i.test(url)) return "image/webp";
+  if (/\.jpe?g(\?|#|$)/i.test(url)) return "image/jpeg";
+  if (/\.avif(\?|#|$)/i.test(url)) return "image/avif";
+  // Нет расширения — по умолчанию PNG, чтобы сохранить альфа-канал.
+  return "image/png";
 }
 
 function getVisibleCaptureRect(img) {
@@ -165,9 +165,11 @@ async function captureImageDataFromDom(img) {
       );
     });
 
-    const dataUrl = await blobToDataUrl(blob);
+    // Не конвертируем в data URL — отдаём ArrayBuffer для трансфера через порт.
+    // base64 data URL для 2200×2200 PNG ≈ 15-20MB и медленно сериализуется.
+    const arrayBuffer = await blob.arrayBuffer();
     return {
-      dataUrl,
+      arrayBuffer,
       mime,
       width,
       height,
@@ -184,20 +186,64 @@ async function captureImageDataFromDom(img) {
   }
 }
 
+function t(key, fallback) {
+  try {
+    const msg = chrome.i18n.getMessage(key);
+    if (msg) return msg;
+  } catch {}
+  return fallback ?? key;
+}
+
+function showToast(message, kind) {
+  const layer = ensureLayer();
+  const toast = document.createElement("div");
+  toast.dataset.comicTranslatorToast = "1";
+  const isError = kind === "error";
+  Object.assign(toast.style, {
+    position: "fixed",
+    bottom: "24px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: isError ? "rgba(220, 50, 47, 0.95)" : "rgba(35, 42, 114, 0.92)",
+    color: "rgba(255, 255, 255, 0.96)",
+    padding: "10px 16px",
+    borderRadius: "10px",
+    fontFamily: "Arial, sans-serif",
+    fontSize: "13px",
+    fontWeight: "600",
+    letterSpacing: "0.3px",
+    lineHeight: "1.35",
+    maxWidth: "min(420px, 80vw)",
+    boxShadow: "0 4px 18px rgba(0, 0, 0, 0.25)",
+    pointerEvents: "none",
+    zIndex: "2147483647",
+    opacity: "0",
+    transition: "opacity 180ms ease"
+  });
+  toast.textContent = message;
+  layer.appendChild(toast);
+  requestAnimationFrame(() => { toast.style.opacity = "1"; });
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 220);
+  }, isError ? 5000 : 2200);
+}
+
 async function loadSettings() {
   try {
-    const stored = await chrome.storage.local.get({
+    const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang } = await chrome.storage.local.get({
       enabled: true,
+      autoTranslate: false,
       renderMode: "replace",
       sourceOcrLang: "en",
       targetLang: "Russian"
     });
 
-    SETTINGS.enabled = stored.enabled !== false;
-    SETTINGS.renderMode = stored.renderMode === "overlay" ? "overlay" : "replace";
-    SETTINGS.sourceOcrLang = stored.sourceOcrLang || "en";
-    SETTINGS.targetLang = stored.targetLang || "Russian";
-
+    SETTINGS.enabled = enabled !== false;
+    SETTINGS.autoTranslate = autoTranslate === true;
+    SETTINGS.renderMode = renderMode === "overlay" ? "overlay" : "replace";
+    SETTINGS.sourceOcrLang = sourceOcrLang ?? "en";
+    SETTINGS.targetLang = targetLang ?? "Russian";
   } catch (error) {
     console.error("[Comic Translator] loadSettings error:", error);
   }
@@ -206,21 +252,15 @@ async function loadSettings() {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
 
-  if (changes.enabled) {
-    SETTINGS.enabled = changes.enabled.newValue !== false;
+  const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang } = changes;
+  if (enabled) SETTINGS.enabled = enabled.newValue !== false;
+  if (autoTranslate) {
+    SETTINGS.autoTranslate = autoTranslate.newValue === true;
+    if (SETTINGS.autoTranslate) scanImages();
   }
-
-  if (changes.renderMode) {
-    SETTINGS.renderMode = changes.renderMode.newValue === "overlay" ? "overlay" : "replace";
-  }
-
-  if (changes.sourceOcrLang) {
-    SETTINGS.sourceOcrLang = changes.sourceOcrLang.newValue || "en";
-  }
-
-  if (changes.targetLang) {
-    SETTINGS.targetLang = changes.targetLang.newValue || "Russian";
-  }
+  if (renderMode) SETTINGS.renderMode = renderMode.newValue === "overlay" ? "overlay" : "replace";
+  if (sourceOcrLang) SETTINGS.sourceOcrLang = sourceOcrLang.newValue ?? "en";
+  if (targetLang) SETTINGS.targetLang = targetLang.newValue ?? "Russian";
 
   applyGlobalState();
 });
@@ -238,6 +278,19 @@ function ensureLayer() {
     zIndex: "2147483647"
   });
 
+  if (!document.getElementById("comic-translator-styles")) {
+    const style = document.createElement("style");
+    style.id = "comic-translator-styles";
+    style.textContent = `
+      @keyframes ct-spin { to { transform: rotate(360deg); } }
+      [data-comic-translator-button].is-loading {
+        animation: ct-spin 0.9s linear infinite;
+        pointer-events: none;
+      }
+    `;
+    document.documentElement.appendChild(style);
+  }
+
   document.documentElement.appendChild(layer);
   return layer;
 }
@@ -251,7 +304,8 @@ function getState(img) {
       clone: null,
       translatedDataUrl: null,
       translationKey: null,
-      originalDisplay: null
+      originalDisplay: null,
+      resizeObserver: null
     };
     STATES.set(img, state);
   }
@@ -269,6 +323,7 @@ function cleanupState(img) {
   if (state.button?.isConnected) state.button.remove();
   if (state.overlay?.isConnected) state.overlay.remove();
   if (state.clone?.isConnected) state.clone.remove();
+  state.resizeObserver?.disconnect();
 
   STATES.delete(img);
 }
@@ -276,13 +331,12 @@ function cleanupState(img) {
 function getOrCreateClone(img) {
   const state = getState(img);
 
-  if (!state.clone || !state.clone.isConnected) {
+  if (!state.clone?.isConnected) {
     const clone = document.createElement("img");
     clone.dataset.comicTranslatorClone = "1";
     clone.alt = img.alt || "";
     clone.loading = "eager";
     clone.decoding = "async";
-
     Object.assign(clone.style, {
       display: "none",
       maxWidth: "100%",
@@ -300,10 +354,9 @@ function getOrCreateOverlay(img) {
   const state = getState(img);
   const layer = ensureLayer();
 
-  if (!state.overlay || !state.overlay.isConnected) {
+  if (!state.overlay?.isConnected) {
     const overlay = document.createElement("img");
     overlay.dataset.comicTranslatorOverlay = "1";
-
     Object.assign(overlay.style, {
       position: "fixed",
       display: "none",
@@ -322,38 +375,28 @@ function getOrCreateOverlay(img) {
 }
 
 function ensureOriginalVisible(img) {
-  const state = getState(img);
-  img.style.display = state.originalDisplay ?? "";
+  const { originalDisplay } = getState(img);
+  img.style.display = originalDisplay ?? "";
 }
 
 function hideOriginalForReplace(img) {
   const state = getState(img);
-  if (state.originalDisplay === null) {
-    state.originalDisplay = img.style.display || "";
-  }
+  state.originalDisplay ??= img.style.display || "";
   img.style.display = "none";
 }
 
-function hideClone(img) {
-  const state = getState(img);
-  if (state.clone) {
-    state.clone.style.display = "none";
-  }
-}
-
-function hideOverlay(img) {
-  const state = getState(img);
-  if (state.overlay) {
-    state.overlay.style.display = "none";
-  }
-}
-
-function hideButton(img) {
-  const state = getState(img);
-  if (state.button) {
-    state.button.style.display = "none";
-  }
-}
+const hideClone = (img) => {
+  const { clone } = getState(img);
+  if (clone) clone.style.display = "none";
+};
+const hideOverlay = (img) => {
+  const { overlay } = getState(img);
+  if (overlay) overlay.style.display = "none";
+};
+const hideButton = (img) => {
+  const { button } = getState(img);
+  if (button) button.style.display = "none";
+};
 
 function syncCloneGeometry(img, clone) {
   clone.style.width = `${img.clientWidth || img.naturalWidth}px`;
@@ -361,11 +404,11 @@ function syncCloneGeometry(img, clone) {
 }
 
 function updateOverlayGeometry(img) {
-  const state = getState(img);
-  if (!state.overlay || !state.translatedDataUrl) return;
+  const { overlay, translatedDataUrl } = getState(img);
+  if (!overlay || !translatedDataUrl) return;
 
   const rect = img.getBoundingClientRect();
-  const hidden =
+  const offScreen =
     rect.width < MIN_SIDE ||
     rect.height < MIN_SIDE ||
     rect.bottom < 0 ||
@@ -373,20 +416,22 @@ function updateOverlayGeometry(img) {
     rect.right < 0 ||
     rect.left > window.innerWidth;
 
-  if (hidden) {
-    state.overlay.style.display = "none";
+  if (offScreen) {
+    overlay.style.display = "none";
     return;
   }
 
-  state.overlay.style.display = "block";
-  state.overlay.style.left = `${rect.left}px`;
-  state.overlay.style.top = `${rect.top}px`;
-  state.overlay.style.width = `${rect.width}px`;
-  state.overlay.style.height = `${rect.height}px`;
+  Object.assign(overlay.style, {
+    display: "block",
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`
+  });
 }
 
 function applyTranslatedView(img) {
-  const state = getState(img);
+  const { translatedDataUrl } = getState(img);
 
   if (!SETTINGS.enabled) {
     ensureOriginalVisible(img);
@@ -396,7 +441,7 @@ function applyTranslatedView(img) {
     return;
   }
 
-  if (!state.translatedDataUrl) {
+  if (!translatedDataUrl) {
     ensureOriginalVisible(img);
     hideClone(img);
     hideOverlay(img);
@@ -408,7 +453,7 @@ function applyTranslatedView(img) {
     hideClone(img);
 
     const overlay = getOrCreateOverlay(img);
-    overlay.src = state.translatedDataUrl;
+    overlay.src = translatedDataUrl;
     updateOverlayGeometry(img);
     return;
   }
@@ -416,7 +461,7 @@ function applyTranslatedView(img) {
   hideOverlay(img);
 
   const clone = getOrCreateClone(img);
-  clone.src = state.translatedDataUrl;
+  clone.src = translatedDataUrl;
   syncCloneGeometry(img, clone);
   clone.style.display = "";
 
@@ -492,13 +537,14 @@ function createButton(img) {
     letterSpacing: "0.6px",
     lineHeight: "1",
     padding: "0 10px",
-    backdropFilter: "blur(2px)"
+    backdropFilter: "blur(2px)",
+    transition: "transform 0s"
   });
+  button.dataset.comicTranslatorButton = "1";
 
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
-
     if (!SETTINGS.enabled) return;
 
     const imageUrl = getImageUrl(img);
@@ -507,123 +553,43 @@ function createButton(img) {
     const translationKey = makeTranslationKey(imageUrl);
 
     if (state.translatedDataUrl && state.translationKey === translationKey) {
-      applyTranslatedView(img);
-      img.dataset.comicTranslatorTranslated = "1";
+      toggleTranslatedView(img, button);
       return;
     }
 
-    const originalText = button.textContent;
     const originalDisplay = button.style.display;
+    const originalText = button.textContent;
     button.disabled = true;
-    button.textContent = "...";
+    button.classList.add("is-loading");
 
     try {
       const domImage = await captureImageDataFromDom(img);
       const visibleCapture = !domImage ? getVisibleCaptureRect(img) : null;
-      if (visibleCapture) {
-        button.style.display = "none";
-      }
-      // Используем порт вместо sendMessage — воркер не засыпает во время долгого перевода
-      const response = await new Promise((resolve, reject) => {
-        let port;
-        try {
-          port = chrome.runtime.connect({ name: "comic-translator" });
-        } catch (err) {
-          reject(err);
-          return;
-        }
+      if (visibleCapture) button.style.display = "none";
 
-        const timeout = setTimeout(() => {
-          try { port.disconnect(); } catch {}
-          reject(new Error("Translation timed out (no response in 5 minutes)"));
-        }, 5 * 60 * 1000);
+      const response = await requestTranslationViaPort(img, imageUrl, domImage, visibleCapture);
+      if (!response) return; // ошибка уже показана
 
-        port.onMessage.addListener((msg) => {
-          if (msg.type === "keep-alive") return; // воркер живой, ждём дальше
-          if (msg.type === "translate-result") {
-            clearTimeout(timeout);
-            port.disconnect();
-            resolve(msg.data);
-          }
-        });
+      const dataUrl = await resolveResultDataUrl(response);
+      if (!dataUrl) return; // ошибка уже показана
 
-        port.onDisconnect.addListener(() => {
-          clearTimeout(timeout);
-          const err = chrome.runtime.lastError;
-          reject(new Error(err?.message || "Port disconnected before response"));
-        });
-
-        port.postMessage({
-          type: "translate-image",
-          imageUrl,
-          pageUrl: window.location.href,
-          sourceOcrLang: SETTINGS.sourceOcrLang,
-          targetLang: SETTINGS.targetLang,
-          domImageDataUrl: domImage?.dataUrl || "",
-          domImageInfo: domImage
-            ? {
-                mime: domImage.mime,
-                width: domImage.width,
-                height: domImage.height,
-                bytes: domImage.bytes,
-                elapsedMs: domImage.elapsedMs
-              }
-            : null,
-          visibleCapture
-        });
-      });
-
-      if (!response?.ok || !response.result_url) {
-       console.error("[Comic Translator] translate error:", response?.error || response);
-        const errMsg = response?.error || "unknown error";
-        try {
-          alert(chrome.i18n.getMessage("error_translate", errMsg));
-        } catch {
-          alert(`Translation error: ${errMsg}`);
-        }
-        return;
-      }
-
-      let translatedDataUrl = response.dataUrl || null;
-      let fetchResult = null;
-      if (!translatedDataUrl) {
-        fetchResult = await chrome.runtime.sendMessage({
-          type: "fetch-image-as-data-url",
-          url: response.result_url
-        });
-      }
-
-      if (!translatedDataUrl && (!fetchResult?.ok || !fetchResult?.dataUrl)) {
-       console.error("[Comic Translator] fetch result error:", fetchResult?.error || fetchResult);
-        const fetchErr = fetchResult?.error || "unknown error";
-        try {
-          alert(chrome.i18n.getMessage("error_fetch", fetchErr));
-        } catch {
-          alert(`Failed to load translated image: ${fetchErr}`);
-        }
-        return;
-      }
-      state.translatedDataUrl = translatedDataUrl || fetchResult.dataUrl;
+      state.translatedDataUrl = dataUrl;
       state.translationKey = translationKey;
-
-      if (!img.dataset.originalSrc) {
-        img.dataset.originalSrc = img.src;
-      }
-
       applyTranslatedView(img);
       img.dataset.comicTranslatorTranslated = "1";
+      button.textContent = t("button_revert", "Original");
     } catch (error) {
       console.error("[Comic Translator] click error:", error);
-      const errStr = String(error);
-      try {
-        alert(chrome.i18n.getMessage("error_generic", errStr));
-      } catch {
-        alert(`Translation error: ${errStr}`);
-      }
+      showToast(`${t("error_generic", "Translation error")}: ${String(error)}`, "error");
     } finally {
       button.style.display = originalDisplay;
       button.disabled = false;
-      button.textContent = originalText;
+      button.classList.remove("is-loading");
+      if (img.dataset.comicTranslatorTranslated === "1") {
+        button.textContent = t("button_revert", "Original");
+      } else {
+        button.textContent = originalText;
+      }
       updateButtonPosition(img);
     }
   });
@@ -631,6 +597,106 @@ function createButton(img) {
   layer.appendChild(button);
   state.button = button;
   return button;
+}
+
+function toggleTranslatedView(img, button) {
+  const wasTranslated = img.dataset.comicTranslatorTranslated === "1";
+  if (wasTranslated) {
+    ensureOriginalVisible(img);
+    hideClone(img);
+    hideOverlay(img);
+    img.dataset.comicTranslatorTranslated = "0";
+    button.textContent = t("button_label") || "IBF";
+  } else {
+    applyTranslatedView(img);
+    img.dataset.comicTranslatorTranslated = "1";
+    button.textContent = t("button_revert", "Original");
+  }
+}
+
+function requestTranslationViaPort(img, imageUrl, domImage, visibleCapture) {
+  return new Promise((resolve, reject) => {
+    let port;
+    try {
+      port = chrome.runtime.connect({ name: "comic-translator" });
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      try { port.disconnect(); } catch {}
+      reject(new Error("Translation timed out (no response in 5 minutes)"));
+    }, 5 * 60 * 1000);
+
+    port.onMessage.addListener((msg) => {
+      if (msg.type === "keep-alive") return;
+      if (msg.type === "translate-result") {
+        clearTimeout(timeout);
+        port.disconnect();
+        resolve(msg.data);
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      clearTimeout(timeout);
+      const err = chrome.runtime.lastError;
+      reject(new Error(err?.message || "Port disconnected before response"));
+    });
+
+    const message = {
+      type: "translate-image",
+      imageUrl,
+      pageUrl: window.location.href,
+      sourceOcrLang: SETTINGS.sourceOcrLang,
+      targetLang: SETTINGS.targetLang,
+      domImageInfo: domImage
+        ? {
+            mime: domImage.mime,
+            width: domImage.width,
+            height: domImage.height,
+            bytes: domImage.bytes,
+            elapsedMs: domImage.elapsedMs
+          }
+        : null,
+      visibleCapture
+    };
+
+    const transfer = [];
+    if (domImage?.arrayBuffer) {
+      message.domImageBuffer = domImage.arrayBuffer;
+      transfer.push(domImage.arrayBuffer);
+    }
+    port.postMessage(message, transfer);
+  }).then(
+    (response) => {
+      if (!response?.ok || !response.result_url) {
+        console.error("[Comic Translator] translate error:", response?.error || response);
+        showToast(`${t("error_translate", "Translation error")}: ${response?.error || "unknown error"}`, "error");
+        return null;
+      }
+      return response;
+    },
+    (error) => {
+      console.error("[Comic Translator] port request failed:", error);
+      showToast(`${t("error_generic", "Translation error")}: ${String(error)}`, "error");
+      return null;
+    }
+  );
+}
+
+async function resolveResultDataUrl(response) {
+  if (response.dataUrl) return response.dataUrl;
+  const fetchResult = await chrome.runtime.sendMessage({
+    type: "fetch-image-as-data-url",
+    url: response.result_url
+  });
+  if (!fetchResult?.ok || !fetchResult?.dataUrl) {
+    console.error("[Comic Translator] fetch result error:", fetchResult?.error || fetchResult);
+    showToast(`${t("error_fetch", "Failed to load result")}: ${fetchResult?.error || "unknown error"}`, "error");
+    return null;
+  }
+  return fetchResult.dataUrl;
 }
 
 function updateButtonPosition(img) {
@@ -682,8 +748,45 @@ function bindImage(img) {
   img.setAttribute(PROCESSED_ATTR, "1");
   createButton(img);
   updateButtonPosition(img);
+  attachResizeObserver(img);
+
+  // Auto-translate: запускаем перевод сразу, не дожидаясь клика.
+  // Пропускаем, если img уже за пределами viewport — иначе каждое
+  // прохождение через скролл будет триггерить OCR-цикл.
+  if (SETTINGS.autoTranslate && isInViewport(img) && !getState(img).translatedDataUrl) {
+    getState(img).button?.click();
+  }
 
   console.log("[Comic Translator] button attached:", getImageUrl(img));
+}
+
+function isInViewport(img) {
+  const rect = img.getBoundingClientRect();
+  return rect.top < window.innerHeight &&
+         rect.bottom > 0 &&
+         rect.left < window.innerWidth &&
+         rect.right > 0;
+}
+
+function attachResizeObserver(img) {
+  const state = getState(img);
+  if (state.resizeObserver || typeof ResizeObserver === "undefined") return;
+  let timer = null;
+  const observer = new ResizeObserver(() => {
+    // debounce — ResizeObserver стреляет на каждый кадр анимации
+    if (timer !== null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      if (!img.isConnected) return;
+      const { translatedDataUrl } = state;
+      updateButtonPosition(img);
+      if (SETTINGS.renderMode === "overlay" && translatedDataUrl) {
+        updateOverlayGeometry(img);
+      }
+    }, 50);
+  });
+  observer.observe(img);
+  state.resizeObserver = observer;
 }
 
 function scanImages() {
@@ -703,6 +806,19 @@ function scanImages() {
   }
 }
 
+function debounce(fn, ms) {
+  let timer = null;
+  return function debounced(...args) {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  };
+}
+
+const debouncedScanImages = debounce(scanImages, 100);
+
 const observer = new MutationObserver(() => {
   window.requestAnimationFrame(scanImages);
 });
@@ -711,13 +827,35 @@ observer.observe(document.documentElement, {
   childList: true,
   subtree: true,
   attributes: true,
-  attributeFilter: ["src", "srcset", "style", "class"]
+  attributeFilter: ["src", "srcset", "class"]
 });
 
-window.addEventListener("scroll", scanImages, { passive: true });
-window.addEventListener("resize", scanImages, { passive: true });
+window.addEventListener("scroll", debouncedScanImages, { passive: true });
+window.addEventListener("resize", debouncedScanImages, { passive: true });
 window.addEventListener("load", scanImages);
 document.addEventListener("readystatechange", scanImages);
+
+// Обработчик контекстного меню: находим img с этим src и запускаем перевод.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "translate-image-by-url" || !message.imageUrl) return;
+  try {
+    const images = document.querySelectorAll("img");
+    for (const img of images) {
+      if (getImageUrl(img) === message.imageUrl && looksLikeImage(img)) {
+        bindImage(img);
+        const state = getState(img);
+        if (state.button) {
+          state.button.click();
+        }
+        break;
+      }
+    }
+    sendResponse({ ok: true });
+  } catch (error) {
+    sendResponse({ ok: false, error: String(error) });
+  }
+  return true;
+});
 
 (async () => {
   await loadSettings();

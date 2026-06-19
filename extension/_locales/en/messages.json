@@ -15,6 +15,14 @@
     "message": "Enable extension",
     "description": "Enable checkbox label"
   },
+  "popup_auto_translate": {
+    "message": "Auto-translate images on page",
+    "description": "Auto-translate checkbox label"
+  },
+  "popup_auto_hint": {
+    "message": "Translations start automatically without clicking each button.",
+    "description": "Auto-translate hint"
+  },
   "popup_mode_title": {
     "message": "Display mode",
     "description": "Mode section title"
@@ -39,6 +47,14 @@
     "message": "Text language affects OCR.\nTranslation language affects the model output.",
     "description": "Hint text"
   },
+  "popup_api_base": {
+    "message": "API server URL",
+    "description": "Label for the API base URL input"
+  },
+  "popup_api_hint": {
+    "message": "Change if your server runs on a different host or port.",
+    "description": "Hint for the API base URL input"
+  },
   "button_translate": {
     "message": "Translate image",
     "description": "Button title tooltip"
@@ -46,6 +62,34 @@
   "button_label": {
     "message": "IBF",
     "description": "Button text label"
+  },
+  "button_revert": {
+    "message": "Original",
+    "description": "Button text when translation is shown, click to revert"
+  },
+  "progress_capturing": {
+    "message": "⏳",
+    "description": "Button text while capturing image"
+  },
+  "progress_sending": {
+    "message": "📤",
+    "description": "Button text while sending to server"
+  },
+  "server_checking": {
+    "message": "Checking server…",
+    "description": "Server status while checking"
+  },
+  "server_online": {
+    "message": "Server online",
+    "description": "Server status when reachable"
+  },
+  "server_offline": {
+    "message": "Server offline",
+    "description": "Server status when unreachable"
+  },
+  "context_translate": {
+    "message": "Translate with Comic Translator",
+    "description": "Context menu item title"
   },
   "error_translate": {
     "message": "Image translation error: $ERROR$",

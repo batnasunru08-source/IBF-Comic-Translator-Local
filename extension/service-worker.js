@@ -1,11 +1,63 @@
-const API_BASE = "http://127.0.0.1:8000";
+const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+let API_BASE = DEFAULT_API_BASE;
 const MAX_UPLOAD_DIMENSION = 2200;
+const MAX_CACHE_BYTES = 50 * 1024 * 1024; // 50MB на все кеши dataUrl
 const MAX_CACHE_ENTRIES = 64;
 const TRANSLATION_CACHE = new Map();
 const RESULT_DATA_URL_CACHE = new Map();
+let resultCacheBytes = 0;
+
+function normalizeApiBase(raw) {
+  const trimmed = String(raw ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) return DEFAULT_API_BASE;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return DEFAULT_API_BASE;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+}
+
+chrome.storage.local.get({ apiBase: DEFAULT_API_BASE }).then(({ apiBase }) => {
+  API_BASE = normalizeApiBase(apiBase);
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.apiBase) return;
+  API_BASE = normalizeApiBase(changes.apiBase.newValue);
+});
 
 function roundMs(value) {
   return Math.round(Number(value || 0));
+}
+
+function estimateDataUrlBytes(value) {
+  if (typeof value === "string") return value.length;
+  if (value && typeof value === "object") {
+    if (typeof value.dataUrl === "string") return value.dataUrl.length;
+    if (typeof value.size === "number") return value.size;
+  }
+  return 0;
+}
+
+function rememberCacheValue(cache, key, value) {
+  if (cache.has(key)) {
+    const old = cache.get(key);
+    resultCacheBytes -= estimateDataUrlBytes(old);
+    cache.delete(key);
+  }
+  const size = estimateDataUrlBytes(value);
+  while (cache.size >= MAX_CACHE_ENTRIES ||
+         (resultCacheBytes + size > MAX_CACHE_BYTES && cache.size > 0)) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) break;
+    const oldestValue = cache.get(oldestKey);
+    resultCacheBytes -= estimateDataUrlBytes(oldestValue);
+    cache.delete(oldestKey);
+  }
+  cache.set(key, value);
+  resultCacheBytes += size;
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -40,7 +92,8 @@ async function readJsonResponse(response) {
     catch { data = { detail: text }; }
   }
   if (!response.ok) {
-    return { ok: false, error: data?.detail || data?.error || `HTTP ${response.status}`, status: response.status };
+    const error = data?.detail ?? data?.error ?? `HTTP ${response.status}`;
+    return { ok: false, error, status: response.status };
   }
   return data;
 }
@@ -99,11 +152,12 @@ async function captureVisibleImageBlob(sender, message) {
   const bitmap = await createImageBitmap(screenshotBlob);
 
   try {
-    const dpr = Math.max(1, Number(capture.devicePixelRatio || 1));
-    const sx = Math.max(0, Math.floor(Number(capture.left || 0) * dpr));
-    const sy = Math.max(0, Math.floor(Number(capture.top || 0) * dpr));
-    const sw = Math.max(1, Math.floor(Number(capture.width || 0) * dpr));
-    const sh = Math.max(1, Math.floor(Number(capture.height || 0) * dpr));
+    const { devicePixelRatio, left = 0, top = 0, width = 0, height = 0 } = capture;
+    const dpr = Math.max(1, Number(devicePixelRatio ?? 1));
+    const sx = Math.max(0, Math.floor(Number(left) * dpr));
+    const sy = Math.max(0, Math.floor(Number(top) * dpr));
+    const sw = Math.max(1, Math.floor(Number(width) * dpr));
+    const sh = Math.max(1, Math.floor(Number(height) * dpr));
     const cropRight = Math.min(bitmap.width, sx + sw);
     const cropBottom = Math.min(bitmap.height, sy + sh);
     const cropWidth = cropRight - sx;
@@ -123,9 +177,63 @@ async function captureVisibleImageBlob(sender, message) {
   }
 }
 
+async function loadSourceBlob(sender, message, timings) {
+  const { domImageBuffer, domImageDataUrl, domImageInfo, visibleCapture } = message;
+  const { mime, elapsedMs = 0, bytes = 0 } = domImageInfo ?? {};
+
+  if (domImageBuffer) {
+    const t0 = performance.now();
+    const blob = new Blob([domImageBuffer], { type: mime ?? "image/png" });
+    Object.assign(timings, {
+      domCaptureMs: Number(elapsedMs),
+      domDecodeMs: performance.now() - t0,
+      sourceKind: "dom",
+      sourceBytes: Number(bytes || blob.size)
+    });
+    return blob;
+  }
+
+  if (domImageDataUrl) {
+    // Backward-compat со старыми версиями расширения
+    const t0 = performance.now();
+    const blob = dataUrlToBlob(domImageDataUrl);
+    Object.assign(timings, {
+      domCaptureMs: Number(elapsedMs),
+      domDecodeMs: performance.now() - t0,
+      sourceKind: "dom",
+      sourceBytes: Number(bytes || blob.size)
+    });
+    return blob;
+  }
+
+  if (visibleCapture) {
+    const t0 = performance.now();
+    const blob = await captureVisibleImageBlob(sender, message);
+    Object.assign(timings, {
+      screenshotCaptureMs: performance.now() - t0,
+      sourceKind: "screenshot",
+      sourceBytes: blob?.size ?? 0
+    });
+    return blob;
+  }
+
+  const t0 = performance.now();
+  const { blob, cacheMode } = await fetchSourceImageBlob(message);
+  Object.assign(timings, {
+    sourceFetchMs: performance.now() - t0,
+    sourceKind: "network",
+    sourceBytes: blob?.size ?? 0,
+    sourceFetchMode: cacheMode
+  });
+  return blob;
+}
+
 async function maybeResizeImageBlob(blob) {
   if (!blob || blob.size === 0 || typeof createImageBitmap !== "function" ||
       typeof OffscreenCanvas === "undefined" || blob.type === "image/gif" || blob.type === "image/svg+xml") {
+    if (blob?.type === "image/gif") {
+      console.warn("[Comic Translator] GIF detected — translating only the first frame, animation will be lost");
+    }
     return blob;
   }
 
@@ -146,8 +254,12 @@ async function maybeResizeImageBlob(blob) {
     context.imageSmoothingQuality = "high";
     context.drawImage(bitmap, 0, 0, width, height);
 
-    const targetType = blob.type === "image/webp" ? "image/webp" : "image/jpeg";
-    const resizedBlob = await canvas.convertToBlob({ type: targetType, quality: 0.92 });
+    // Сохраняем PNG и WebP без изменений при ресайзе — иначе теряется
+    // альфа-канал и OCR получает чёрный фон вместо прозрачности.
+    const preserveTypes = new Set(["image/webp", "image/png", "image/avif"]);
+    const targetType = preserveTypes.has(blob.type) ? blob.type : "image/jpeg";
+    const opts = targetType === "image/jpeg" ? { quality: 0.92 } : {};
+    const resizedBlob = await canvas.convertToBlob({ type: targetType, ...opts });
     if (!resizedBlob || resizedBlob.size >= blob.size) return blob;
 
     console.log("[Comic Translator] resized upload blob:",
@@ -205,39 +317,21 @@ async function fetchResultDataUrl(resultUrl) {
 async function handleTranslateImage(message, sender) {
   const totalStart = performance.now();
   const cacheKey = makeTranslationCacheKey(message);
-  const cached = TRANSLATION_CACHE.get(cacheKey);
-  if (cached) {
-    console.log("[Comic Translator] translate-image cache hit:", { imageUrl: message.imageUrl });
-    return cached;
+  const cachedMeta = TRANSLATION_CACHE.get(cacheKey);
+  if (cachedMeta) {
+    // DataUrl берём из отдельного кеша, чтобы не дублировать ~2MB в двух местах.
+    const dataUrl = cachedMeta.result_url ? RESULT_DATA_URL_CACHE.get(cachedMeta.result_url) : null;
+    if (dataUrl) {
+      console.log("[Comic Translator] translate-image cache hit:", { imageUrl: message.imageUrl });
+      return { ...cachedMeta, dataUrl };
+    }
   }
 
   let data;
   const timings = {};
 
   try {
-    let sourceBlob;
-    if (message.domImageDataUrl) {
-      const domDecodeStart = performance.now();
-      sourceBlob = dataUrlToBlob(message.domImageDataUrl);
-      timings.domCaptureMs = Number(message.domImageInfo?.elapsedMs || 0);
-      timings.domDecodeMs = performance.now() - domDecodeStart;
-      timings.sourceKind = "dom";
-      timings.sourceBytes = Number(message.domImageInfo?.bytes || sourceBlob.size || 0);
-    } else if (message.visibleCapture) {
-      const screenshotStart = performance.now();
-      sourceBlob = await captureVisibleImageBlob(sender, message);
-      timings.screenshotCaptureMs = performance.now() - screenshotStart;
-      timings.sourceKind = "screenshot";
-      timings.sourceBytes = sourceBlob?.size || 0;
-    } else {
-      const fetchStart = performance.now();
-      const fetched = await fetchSourceImageBlob(message);
-      sourceBlob = fetched.blob;
-      timings.sourceFetchMs = performance.now() - fetchStart;
-      timings.sourceKind = "network";
-      timings.sourceBytes = sourceBlob?.size || 0;
-      timings.sourceFetchMode = fetched.cacheMode;
-    }
+    const sourceBlob = await loadSourceBlob(sender, message, timings);
 
     const resizeStart = performance.now();
     const uploadBlob = await maybeResizeImageBlob(sourceBlob);
@@ -246,7 +340,7 @@ async function handleTranslateImage(message, sender) {
     const uploadStart = performance.now();
     data = await requestTranslateUpload(message, uploadBlob);
     timings.serverRequestMs = performance.now() - uploadStart;
-    timings.uploadBytes = uploadBlob?.size || 0;
+    timings.uploadBytes = uploadBlob?.size ?? 0;
   } catch (uploadError) {
     console.warn("[Comic Translator] upload-first path failed, falling back to translate-from-url:", uploadError);
     timings.uploadFirstError = String(uploadError);
@@ -269,12 +363,46 @@ async function handleTranslateImage(message, sender) {
     data.client_timings = Object.fromEntries(
       Object.entries(timings).map(([k, v]) => [k, typeof v === "number" ? roundMs(v) : v])
     );
-    rememberCacheValue(TRANSLATION_CACHE, cacheKey, data);
+    // В TRANSLATION_CACHE кладём метаданные (без dataUrl) — dataUrl живёт
+    // отдельно в RESULT_DATA_URL_CACHE, не дублируем ~2MB.
+    const { dataUrl: _unused, ...metaOnly } = data;
+    rememberCacheValue(TRANSLATION_CACHE, cacheKey, metaOnly);
   }
 
   console.log("[Comic Translator] translate response:", data);
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Контекстное меню — правый клик по картинке → "Translate with Comic Translator"
+// ---------------------------------------------------------------------------
+function getContextMenuTitle() {
+  try { return chrome.i18n.getMessage("context_translate") ?? "Translate with Comic Translator"; }
+  catch { return "Translate with Comic Translator"; }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  try {
+    chrome.contextMenus.create({
+      id: "comic-translator-image",
+      title: getContextMenuTitle(),
+      contexts: ["image"]
+    });
+  } catch (error) {
+    console.warn("[Comic Translator] context menu create failed:", error);
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== "comic-translator-image" || !info.srcUrl || !tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, {
+    type: "translate-image-by-url",
+    imageUrl: info.srcUrl,
+    pageUrl: tab.url || ""
+  }).catch((error) => {
+    console.info("[Comic Translator] content script did not handle context menu click:", String(error));
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Порт-based коммуникация — решает проблему "message channel closed"
@@ -316,6 +444,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, dataUrl });
       } catch (error) {
         console.error("[Comic Translator] fetch-image-as-data-url error:", error);
+        sendResponse({ ok: false, error: String(error) });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "ping-server") {
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(`${API_BASE}/health`, {
+          method: "GET",
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        sendResponse({ ok: response.ok, status: response.status });
+      } catch (error) {
         sendResponse({ ok: false, error: String(error) });
       }
     })();
