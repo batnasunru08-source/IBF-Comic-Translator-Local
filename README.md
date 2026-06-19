@@ -124,13 +124,14 @@ bash install-linux-gpu.sh
 cd server
 source ../.venv/bin/activate
 python -m uvicorn main:app --host 0.0.0.0 --port 8000                  # 1.8B (по умолчанию)
-
 ```
 
 Выбор модели — через переменную окружения `MODEL_FILE`. По умолчанию `Hy-MT2-1.8B-Q8_0.gguf`. Перед запуском 7B убедитесь, что соответствующий `.gguf` уже скачан (`bash download-model.sh 7b`).
+
 ```bash
 MODEL_FILE=HY-MT2-7B-Q8_0.gguf python -m uvicorn main:app --host 0.0.0.0 --port 8000 
 ```
+
 В `docker-compose.yml` модель переключается добавлением строки `MODEL_FILE=HY-MT2-7B-Q8_0.gguf` в `environment:`.
 
 
