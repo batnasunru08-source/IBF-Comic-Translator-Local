@@ -537,6 +537,8 @@ def process_image_bytes(
     translated_texts = translator.translate_batch(texts_to_translate, target_language=target_lang)
     translation_ms = round((perf_counter() - translation_started) * 1000)
 
+    translator.reset()
+
     for i, (block, translated) in enumerate(zip(blocks, translated_texts), start=1):
         block.translated_text = translated
         print(f"[PIPELINE] translated[{i}]: {translated!r}")

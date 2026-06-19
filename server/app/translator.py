@@ -2,13 +2,15 @@ from __future__ import annotations
 
 
 import logging
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = Path(__file__).parent.parent / "models" / "Hy-MT2-1.8B-Q8_0.gguf"
+MODELS_DIR = Path(__file__).parent.parent / "models"
+DEFAULT_MODEL_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
 
 _TEMPERATURE        = 0.7
 _TOP_P              = 0.6
@@ -37,25 +39,30 @@ _NUMBERED_LINE_RE = re.compile(r"^\d+[.)\s]\s*(.+)$", re.MULTILINE)
 
 class HyMt2Translator:
     def __init__(self) -> None:
-        if not MODEL_PATH.exists():
+        model_file = os.environ.get("MODEL_FILE", "").strip() or DEFAULT_MODEL_FILE
+        model_path = MODELS_DIR / model_file
+        if not model_path.exists():
             raise FileNotFoundError(
-                f"GGUF модель не найдена: {MODEL_PATH}\n"
-                f"Скачай: bash download-model.sh"
+                f"GGUF модель не найдена: {model_path}\n"
+                f"Скачай: bash download-model.sh\n"
+                f"  1.8B: bash download-model.sh\n"
+                f"  7B:   bash download-model.sh 7b\n"
+                f"  Затем: MODEL_FILE={model_file} python -m uvicorn main:app"
             )
         try:
             from llama_cpp import Llama
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as err:
             raise RuntimeError(
                 "llama-cpp-python не установлен.\n"
                 "CPU: pip install llama-cpp-python\n"
                 "GPU: CMAKE_ARGS='-DGGML_CUDA=on' pip install llama-cpp-python"
-            )
+            ) from err
 
         n_gpu_layers = self._pick_gpu_layers()
-        logger.info(f"[TRANSLATOR] Loading {MODEL_PATH.name} n_gpu_layers={n_gpu_layers}")
+        logger.info("[TRANSLATOR] Loading %s n_gpu_layers=%d", model_path.name, n_gpu_layers)
 
         self._llm = Llama(
-            model_path=str(MODEL_PATH),
+            model_path=str(model_path),
             n_ctx=4096,
             n_gpu_layers=n_gpu_layers,
             verbose=False,
@@ -86,6 +93,19 @@ class HyMt2Translator:
     def _translate_single(self, text: str, lang: str) -> str:
         prompt = _SINGLE_PROMPT.format(lang=lang, text=text)
         return self._call(prompt, max_tokens=256)
+
+    def reset(self) -> None:
+        """Сброс KV-кеша и внутреннего состояния модели для освобождения VRAM.
+
+        Вызывается между независимыми задачами (например, между обработкой
+        разных изображений), чтобы GPU-буферы, выделенные под n_ctx, не
+        удерживались после завершения генерации.
+        """
+        try:
+            self._llm.reset()
+            logger.info("[TRANSLATOR] Context reset OK")
+        except Exception as err:
+            logger.warning("[TRANSLATOR] reset failed: %s", err)
 
     # Маркеры эха промпта — строки, которые модель склонна повторять из инструкции.
     _PROMPT_ECHO_MARKERS = (
