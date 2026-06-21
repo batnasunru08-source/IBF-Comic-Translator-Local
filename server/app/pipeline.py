@@ -112,8 +112,6 @@ def looks_translatable(text: str) -> bool:
         return False
 
     # SFX (звукоподражания манги): ALL_CAPS, ≤2 слов, ≤10 букв.
-    # "HUMP THRU", "PLAP TUM", "SQUIRT" — ономатопея, не нужен перевод.
-    # "I WANT TO CUM!" — реальная речь (3 слова, >10 букв) — пропускаем.
     if text.isupper() and len(text) <= 15:
         alpha_chars = sum(c.isalpha() for c in text)
         if alpha_chars <= 10 and len(text.split()) <= 2:
