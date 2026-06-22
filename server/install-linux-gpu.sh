@@ -1,5 +1,5 @@
 #!/bin/bash
-# Установка зависимостей для Linux x86_64 + NVIDIA GPU (CUDA 13.0)
+# Установка зависимостей для Linux x86_64 + NVIDIA GPU (CUDA 13.2)
 # Используется uv вместо pip
 set -e
 cd "$(dirname "$0")"
