@@ -16,8 +16,6 @@ echo "[INSTALL] Installing llama-cpp-python with CUDA support (uv)..."
 ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 export CUDACXX=/usr/local/cuda/bin/nvcc
 export LIBRARY_PATH="/usr/local/cuda/lib64/stubs:${LIBRARY_PATH}"
-# FIX: CMAKE_CUDA_ARCHITECTURES ранее не пробрасывался — сборка шла под все
-# архитектуры, что замедляло билд и раздувало бинарник.
 export CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH}"
 uv pip install llama-cpp-python \
     --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu132 \
