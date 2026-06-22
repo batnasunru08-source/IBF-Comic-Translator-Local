@@ -1,72 +1,101 @@
+# syntax=docker/dockerfile:1.7
 # ---------- Build stage ----------
 FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS build
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
-# Ubuntu 24.04 уже содержит Python 3.12 в официальных репозиториях.
-# PPA deadsnakes здесь избыточен и только замедляет сборку.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-venv \
-    python3.12-dev \
-    build-essential \
-    cmake \
-    git \
-    curl \
+# uv pinned для воспроизводимости
+ARG UV_VERSION=0.5.11
+
+# Системные пакеты для сборки (девел-образ, размер не критичен).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        python3.12-dev \
+        build-essential \
+        cmake \
+        git \
+        curl \
+        ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Создаем виртуальное окружение
-RUN python3.12 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Виртуальное окружение Python + установка uv (через pip — PyPI стабильнее,
+# чем release-assets.githubusercontent.com, который периодически режет по сети)
+RUN python3.12 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir "uv==${UV_VERSION}"
+ENV PATH="/opt/venv/bin:$PATH" \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
 
-# Установка uv через официальный скрипт (быстрее и надежнее, чем через pip)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV UV_LINK_MODE=copy
-
-# Копируем только файлы зависимостей для максимального использования кэша Docker
-COPY requirements.txt requirements-linux-gpu.txt install-linux-gpu_docker.sh ./
-RUN chmod +x install-linux-gpu_docker.sh
-
-# Архитектура GPU для llama-cpp-python
+# Архитектура GPU для llama-cpp-python (пробрасывается из compose: --build-arg CUDA_ARCH=120)
 ARG CUDA_ARCH=120
 ENV CUDA_ARCH=${CUDA_ARCH}
 
-# Запускаем установку и очищаем кэш В ОДНОМ СЛОЕ, чтобы не раздувать образ
-RUN bash install-linux-gpu_docker.sh \
+# Копируем только манифесты зависимостей и install-скрипт — для максимального кэша
+COPY requirements.txt requirements-linux-gpu.txt install-linux-gpu_docker.sh ./
+RUN chmod +x install-linux-gpu_docker.sh
+
+# Установка с монтированием кэша uv (ускоряет повторные сборки)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    bash install-linux-gpu_docker.sh \
     && find /opt/venv -name "*.a" -delete \
-    && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + \
-    && rm -rf /root/.cache /tmp/* /var/tmp/*
+    && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true \
+    && rm -rf /tmp/* /var/tmp/*
 
 # ---------- Runtime stage ----------
 FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
-ENV PATH="/opt/venv/bin:$PATH"
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PATH="/opt/venv/bin:$PATH"
 
-# Устанавливаем только runtime-зависимости. --no-install-recommends экономит место.
-# Python 3.12 также берем из родного репозитория Ubuntu 24.04.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
-    libgl1 \
-    libglib2.0-0 \
-    libgomp1 \
-    curl \
-    fonts-noto-core \
-    fonts-noto-cjk \
-    fonts-dejavu-core \
-    fonts-liberation2 \
+# Только runtime-зависимости
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3.12 \
+        libgl1 \
+        libglib2.0-0 \
+        libgomp1 \
+        curl \
+        fonts-noto-core \
+        fonts-noto-cjk \
+        fonts-dejavu-core \
+        fonts-liberation2 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Копируем готовое виртуальное окружение из стадии сборки
+# Переносим готовое venv
 COPY --from=build /opt/venv /opt/venv
 
 WORKDIR /app
-# Копируем исходный код (убедитесь, что у вас есть правильный .dockerignore)
+# Исходники (с .dockerignore)
 COPY . .
+
+# Volumes для моделей и результатов
+RUN mkdir -p /app/models /app/results
+
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+# Graceful shutdown uvicorn
+STOPSIGNAL SIGTERM
+
+# OCI labels
+LABEL org.opencontainers.image.title="IBF Comic Translator (GPU)" \
+      org.opencontainers.image.description="FastAPI comic translator with CUDA-accelerated llama.cpp backend" \
+      org.opencontainers.image.source="https://github.com/batnasunru08-source/IBF-Comic-Translator-Local" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="batnasun"
 
 CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -17,3 +17,6 @@ paddlex>=3.5.2
 # CPU: pip install llama-cpp-python
 # GPU: CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --no-cache-dir
 # Не ставим автоматически — нужна правильная сборка под железо.
+
+# Локальный кэш для translator (используется в app/translator.py)
+diskcache>=5.6.0
