@@ -1,0 +1,43 @@
+{
+  "watermark_tokens": [
+    "pixiv",
+    "twitter",
+    "patreon",
+    "instagram",
+    "fanbox",
+    "deviantart",
+    "artstation",
+    "webtoon",
+    "tapas",
+    "\u00a9",
+    "copyright",
+    "all rights reserved",
+    "lacomics.net"
+  ],
+  "known_repeats": [
+    "haha",
+    "mama",
+    "papa",
+    "nana",
+    "lala",
+    "wawa",
+    "baba",
+    "dada"
+  ],
+  "noise_tokens": [
+    "uinf",
+    "mmn",
+    "mmo",
+    "s4p",
+    "shs",
+    "slrrp",
+    "4mm",
+    "ymmy",
+    "mmme",
+    "mmmhs",
+    "squbeeze",
+    "umhae",
+    "ittoirhll",
+    "einimi1"
+  ]
+}

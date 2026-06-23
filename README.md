@@ -53,6 +53,31 @@ bash download-model.sh
 CUDA_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.') docker compose --profile gpu up -d --build
 ```
 
+### Для режима Vulkan
+Работает на любом GPU с Vulkan ICD: NVIDIA (проприетарный драйвер), AMD (AMDGPU/Mesa), Intel (iGPU/Arc).
+
+Требования на хосте:
+- Драйверы с Vulkan ICD (Mesa, AMDGPU, NVIDIA)
+- Для Docker: `apt install mesa-vulkan-drivers vulkan-tools` (или аналог)
+
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+docker compose --profile vulkan up -d --build
+```
+
+Проверка:
+```bash
+docker exec ibf-translator-vulkan vulkaninfo --summary   # должны быть устройства
+docker logs ibf-translator-vulkan | grep ggml_vulkan      # "found N devices"
+curl http://127.0.0.1:8000/health                          # {"ok": true}
+```
+
+NVIDIA + Vulkan: раскомментируйте блок `deploy.resources.reservations.devices` в сервисе `translator-vulkan` в `docker-compose.yml`, если установлен `nvidia-container-toolkit` — тогда NVIDIA ICD будет виден в контейнере.
+
+> **WSL2:** требуется WSLg и `mesa-vulkan-drivers` в гостевой Windows. Эта инструкция не покрывает WSL2-специфику — используйте `install-wsl-gpu.sh` для CUDA-режима.
+
 ---
 
 ## Установка
@@ -83,16 +108,18 @@ source .venv/bin/activate
 ### 4. Скачать модель перевода
 
 ```bash
-bash download-model.sh
+bash download-model.sh            # 1.8B Q8_0 (~1.9 GB) — по умолчанию
+bash download-model.sh 7b         # 7B   Q8_0 (~8.0 GB)
 ```
 
-Скрипт скачает `Hy-MT2-1.8B-Q8_0.gguf` (~1.9 GB) в папку `server/models/`.
-
-Если нужна более лёгкая версия:
+Если нужна более лёгкая/компактная версия — укажите квант вторым аргументом:
 ```bash
-bash download-model.sh Hy-MT2-1.8B-Q4_K_M.gguf   # ~1.1 GB
-bash download-model.sh Hy-MT2-1.8B-Q2_K.gguf      # ~0.7 GB
+bash download-model.sh 1.8b q4_k_m    # 1.8B Q4_K_M (~1.1 GB)
+bash download-model.sh 1.8b q2_k      # 1.8B Q2_K   (~0.7 GB)
+bash download-model.sh 7b   q4_k_m    # 7B   Q4_K_M (~4.6 GB)
+bash download-model.sh 7b   q6_k      # 7B   Q6_K   (~6.2 GB)
 ```
+
 
 
 ### 5. Python-зависимости
@@ -121,8 +148,17 @@ bash install-linux-gpu.sh
 ```bash
 cd server
 source ../.venv/bin/activate
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000                  # 1.8B (по умолчанию)
 ```
+
+Выбор модели — через переменную окружения `MODEL_FILE`. По умолчанию `Hy-MT2-1.8B-Q8_0.gguf`. Перед запуском 7B убедитесь, что соответствующий `.gguf` уже скачан (`bash download-model.sh 7b`).
+
+```bash
+MODEL_FILE=HY-MT2-7B-Q8_0.gguf python -m uvicorn main:app --host 0.0.0.0 --port 8000 
+```
+
+В `docker-compose.yml` модель переключается добавлением строки `MODEL_FILE=HY-MT2-7B-Q8_0.gguf` в `environment:`.
+
 
 При первом запуске сервер скачает модели PaddleOCR (~200 MB). Это займёт 1–2 минуты.
 
@@ -198,22 +234,6 @@ python -c "from llama_cpp import Llama; print('OK')"
 - Смотрите `debug_dir` в meta-ответе сервера
 - Откройте `grouped_blocks.png` в папке debug
 - Проверьте `crop_*.png` для каждого блока
-
----
-
-## Опционально: PatchMatch inpaint
-
-PatchMatch улучшает качество стирания текста на сложных фонах.
-
-```bash
-sudo apt install -y build-essential git pkg-config libopencv-dev
-cd server
-bash install-patchmatch.sh
-export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-Если PatchMatch недоступен — сервер автоматически переключается на TELEA.
 
 ---
 

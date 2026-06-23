@@ -14,11 +14,19 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
     volumes:
       - ./models:/app/models
       - ./results:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
     restart: unless-stopped
 
   translator-cpu:
@@ -32,4 +40,40 @@ services:
     volumes:
       - ./models:/app/models
       - ./results:/app/results
+    restart: unless-stopped
+
+  translator-vulkan:
+    build:
+      context: .
+      dockerfile: Dockerfile.vulkan
+    container_name: ibf-translator-vulkan
+    profiles: ["vulkan"]
+    ports:
+      - "8000:8000"
+    # /dev/dri нужен для AMD/Intel (mesa ICD видит устройства через
+    # этот каталог). Для NVIDIA через Vulkan — раскомментируйте блок
+    # deploy.resources.reservations.devices ниже, если у вас
+    # установлен nvidia-container-toolkit; в этом случае ICD NVIDIA
+    # прокинется в контейнер автоматически.
+    devices:
+      - /dev/dri:/dev/dri
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    volumes:
+      - ./models:/app/models
+      - ./results:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LLAMA_BACKEND=vulkan
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
     restart: unless-stopped

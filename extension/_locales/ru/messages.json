@@ -15,6 +15,14 @@
     "message": "Включить расширение",
     "description": "Метка чекбокса"
   },
+  "popup_auto_translate": {
+    "message": "Автоперевод изображений на странице",
+    "description": "Метка чекбокса автоперевода"
+  },
+  "popup_auto_hint": {
+    "message": "Переводы запускаются автоматически без клика по кнопкам.",
+    "description": "Подсказка автоперевода"
+  },
   "popup_mode_title": {
     "message": "Режим отображения",
     "description": "Заголовок секции режима"
@@ -39,6 +47,14 @@
     "message": "Язык текста влияет на OCR.\nЯзык перевода влияет на ответ модели.",
     "description": "Подсказка"
   },
+  "popup_api_base": {
+    "message": "URL API-сервера",
+    "description": "Метка поля URL API-сервера"
+  },
+  "popup_api_hint": {
+    "message": "Измените, если сервер работает на другом хосте или порте.",
+    "description": "Подсказка для поля URL API-сервера"
+  },
   "button_translate": {
     "message": "Перевести изображение",
     "description": "Подсказка кнопки"
@@ -46,6 +62,34 @@
   "button_label": {
     "message": "IBF",
     "description": "Текст кнопки"
+  },
+  "button_revert": {
+    "message": "Оригинал",
+    "description": "Текст кнопки при показе перевода, клик возвращает оригинал"
+  },
+  "progress_capturing": {
+    "message": "⏳",
+    "description": "Текст кнопки при захвате изображения"
+  },
+  "progress_sending": {
+    "message": "📤",
+    "description": "Текст кнопки при отправке на сервер"
+  },
+  "server_checking": {
+    "message": "Проверка сервера…",
+    "description": "Статус сервера при проверке"
+  },
+  "server_online": {
+    "message": "Сервер доступен",
+    "description": "Статус сервера при доступности"
+  },
+  "server_offline": {
+    "message": "Сервер недоступен",
+    "description": "Статус сервера при недоступности"
+  },
+  "context_translate": {
+    "message": "Перевести через Comic Translator",
+    "description": "Заголовок пункта контекстного меню"
   },
   "error_translate": {
     "message": "Ошибка перевода изображения: $ERROR$",

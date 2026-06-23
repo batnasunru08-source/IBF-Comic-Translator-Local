@@ -53,6 +53,31 @@ bash download-model.sh
 CUDA_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.') docker compose --profile gpu up -d --build
 ```
 
+### For Vulkan mode
+Works on any GPU with a Vulkan ICD: NVIDIA (proprietary driver), AMD (AMDGPU/Mesa), Intel (iGPU/Arc).
+
+Host requirements:
+- Vulkan ICD drivers (Mesa, AMDGPU, NVIDIA)
+- For Docker: `apt install mesa-vulkan-drivers vulkan-tools` (or equivalent)
+
+```bash
+git clone https://github.com/batnasunru08-source/IBF-Comic-Translator-Local.git
+cd IBF-Comic-Translator-Local/server/
+bash download-model.sh
+docker compose --profile vulkan up -d --build
+```
+
+Smoke test:
+```bash
+docker exec ibf-translator-vulkan vulkaninfo --summary   # should list devices
+docker logs ibf-translator-vulkan | grep ggml_vulkan      # "found N devices"
+curl http://127.0.0.1:8000/health                          # {"ok": true}
+```
+
+NVIDIA + Vulkan: uncomment the `deploy.resources.reservations.devices` block under `translator-vulkan` in `docker-compose.yml` if `nvidia-container-toolkit` is installed — the NVIDIA ICD will then be visible inside the container.
+
+> **WSL2:** requires WSLg and `mesa-vulkan-drivers` in the Windows guest. This guide does not cover WSL2-specific setup — use `install-wsl-gpu.sh` for the CUDA mode.
+
 ---
 
 ## Installation
@@ -195,22 +220,6 @@ With GPU build, the model loading logs should show `ggml_cuda_init: found N CUDA
 - Check `debug_dir` in the server's meta response
 - Open `grouped_blocks.png` in the debug folder
 - Check `crop_*.png` for each block
-
----
-
-## Optional: PatchMatch inpaint
-
-PatchMatch improves text erasing quality on complex backgrounds.
-
-```bash
-sudo apt install -y build-essential git pkg-config libopencv-dev
-cd server
-bash install-patchmatch.sh
-export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-If PatchMatch is unavailable, the server automatically falls back to TELEA.
 
 ---
 

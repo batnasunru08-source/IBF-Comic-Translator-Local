@@ -1,31 +1,29 @@
 # syntax=docker/dockerfile:1.7
 # ---------- Build stage ----------
-FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS build
+# Сборка llama-cpp-python из исходников НЕ требуется: используется
+# prebuilt vulkan-wheel с https://abetlen.github.io/llama-cpp-python/whl/vulkan
+FROM ubuntu:24.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
 
-# uv pinned для воспроизводимости
 ARG UV_VERSION=0.5.11
 
-# Системные пакеты для сборки (девел-образ, размер не критичен).
+# Только Python 3.12 + uv. Компиляторы/headers/Vulkan-dev не нужны.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
         python3.12 \
         python3.12-venv \
         python3.12-dev \
-        build-essential \
-        cmake \
         git \
         curl \
         ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Виртуальное окружение Python + установка uv (через pip — PyPI стабильнее,
-# чем release-assets.githubusercontent.com, который периодически режет по сети)
+# uv pinned для воспроизводимости
 RUN python3.12 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir "uv==${UV_VERSION}"
 ENV PATH="/opt/venv/bin:$PATH" \
@@ -33,30 +31,27 @@ ENV PATH="/opt/venv/bin:$PATH" \
     UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
-# Архитектура GPU для llama-cpp-python (пробрасывается из compose: --build-arg CUDA_ARCH=120)
-ARG CUDA_ARCH=120
-ENV CUDA_ARCH=${CUDA_ARCH}
-
 # Копируем только манифесты зависимостей и install-скрипт — для максимального кэша
-COPY requirements.txt requirements-linux-gpu.txt install-linux-gpu_docker.sh ./
-RUN chmod +x install-linux-gpu_docker.sh
+COPY requirements.txt requirements-vulkan.txt install-linux-vulkan_docker.sh ./
+RUN chmod +x install-linux-vulkan_docker.sh
 
-# Установка с монтированием кэша uv (ускоряет повторные сборки)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    bash install-linux-gpu_docker.sh \
+    bash install-linux-vulkan_docker.sh \
     && find /opt/venv -name "*.a" -delete \
     && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true \
     && rm -rf /tmp/* /var/tmp/*
 
 # ---------- Runtime stage ----------
-FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH" \
+    LLAMA_BACKEND=vulkan
 
-# Только runtime-зависимости
+# Runtime-пакеты: libvulkan1 + mesa ICD (для AMD/Intel) + vulkan-tools
+# (нужен для `vulkaninfo` smoke-теста).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -65,6 +60,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libglib2.0-0 \
         libgomp1 \
         curl \
+        libvulkan1 \
+        mesa-vulkan-drivers \
+        vulkan-tools \
         fonts-noto-core \
         fonts-noto-cjk \
         fonts-dejavu-core \
@@ -76,24 +74,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY --from=build /opt/venv /opt/venv
 
 WORKDIR /app
-# Исходники (с .dockerignore)
 COPY . .
 
-# Volumes для моделей и результатов
 RUN mkdir -p /app/models /app/results
 
 EXPOSE 8000
 
-# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
-# Graceful shutdown uvicorn
 STOPSIGNAL SIGTERM
 
-# OCI labels
-LABEL org.opencontainers.image.title="IBF Comic Translator (GPU)" \
-      org.opencontainers.image.description="FastAPI comic translator with CUDA-accelerated llama.cpp backend" \
+LABEL org.opencontainers.image.title="IBF Comic Translator (Vulkan)" \
+      org.opencontainers.image.description="FastAPI comic translator with Vulkan-accelerated llama.cpp backend" \
       org.opencontainers.image.source="https://github.com/batnasunru08-source/IBF-Comic-Translator-Local" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="batnasun"

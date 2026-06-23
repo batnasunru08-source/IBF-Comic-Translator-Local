@@ -199,21 +199,6 @@ GPU 模式下，模型加载日志中应显示 `ggml_cuda_init: found N CUDA dev
 
 ---
 
-## 可选：PatchMatch 修复
-
-PatchMatch 可提升复杂背景上的文字擦除质量。
-
-```bash
-sudo apt install -y build-essential git pkg-config libopencv-dev
-cd server
-bash install-patchmatch.sh
-export COMIC_TRANSLATOR_INPAINT_BACKEND=patchmatch
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-如果 PatchMatch 不可用，服务器会自动回退到 TELEA。
-
----
 
 ## 项目结构
 

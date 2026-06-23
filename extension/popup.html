@@ -50,6 +50,34 @@
       padding: 6px 8px;
     }
 
+    .api-input {
+      font-size: 13px;
+      padding: 6px 8px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    .api-input:focus {
+      outline: none;
+      border-color: rgba(35, 42, 114, 0.6);
+    }
+
+    .api-input.is-invalid {
+      border-color: #dc322f;
+    }
+
+    .api-hint {
+      margin-top: 4px;
+    }
+
+    .auto-hint {
+      margin-top: 4px;
+      margin-bottom: 0;
+    }
+
     .hint {
       margin-top: 10px;
       font-size: 12px;
@@ -71,6 +99,16 @@
       <input type="checkbox" id="enabled">
       <span data-i18n="popup_enabled">Enable extension</span>
     </label>
+  </div>
+
+  <div class="section" id="autoSection">
+    <label>
+      <input type="checkbox" id="autoTranslate">
+      <span data-i18n="popup_auto_translate">Auto-translate images on page</span>
+    </label>
+    <div class="hint auto-hint" data-i18n="popup_auto_hint">
+      Translations start automatically without clicking each button.
+    </div>
   </div>
 
   <div class="section" id="modeSection">
@@ -121,10 +159,57 @@
     </div>
   </div>
 
+  <div class="field">
+    <label for="apiBase" data-i18n="popup_api_base">API server URL</label>
+    <input
+      type="text"
+      id="apiBase"
+      class="api-input"
+      placeholder="http://127.0.0.1:8000"
+      spellcheck="false"
+      autocomplete="off"
+    />
+    <div class="hint api-hint" data-i18n="popup_api_hint">
+      Change if your server runs on a different host or port.
+    </div>
+  </div>
+
   <div class="hint" data-i18n="popup_hint">
     Text language affects OCR.
     Translation language affects the model output.
   </div>
+
+  <div class="server-status" id="serverStatus">
+    <span class="server-status-dot" id="serverStatusDot"></span>
+    <span id="serverStatusText" data-i18n="server_checking">Checking…</span>
+  </div>
+
+  <style>
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .server-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #999;
+      flex: 0 0 auto;
+    }
+
+    .server-status.is-ok { background: rgba(46, 160, 67, 0.12); color: #1a6b32; }
+    .server-status.is-ok .server-status-dot { background: #2ea043; }
+    .server-status.is-error { background: rgba(220, 50, 47, 0.12); color: #8a1f1d; }
+    .server-status.is-error .server-status-dot { background: #dc322f; }
+  </style>
 
   <script src="popup.js"></script>
 </body>

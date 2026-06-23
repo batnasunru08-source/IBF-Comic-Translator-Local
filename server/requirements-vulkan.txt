@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# CPU torch: PaddleOCR's transformers backend works on CPU; we do not
+# link the vulkan profile to an NVIDIA CUDA install.
+torch>=2.7.0
+torchvision>=0.20.0
+
+# llama-cpp-python намеренно НЕ указан здесь: ставится отдельной
+# командой в install-linux-vulkan*.sh с --extra-index-url на
+# vulkan-колеса (https://abetlen.github.io/llama-cpp-python/whl/vulkan).
+# Prebuilt wheel собран с -DGGML_VULKAN=on, source-build не требуется.
