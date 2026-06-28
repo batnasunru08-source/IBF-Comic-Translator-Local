@@ -24,6 +24,9 @@ warnings.filterwarnings(
     module=r"requests(\..*)?"
 )
 
+# PP-OCRv6 (paddleocr 3.7.0): единая модель на 50 языков (zh/zh_tra/en/ja + латиница).
+# Korean отсутствует в PP-OCRv6 → PaddleOCR автоматически использует fallback
+# на PP-OCRv5: детекция PP-OCRv5_server_det, распознавание korean_PP-OCRv5_mobile_rec.
 PADDLE_LANG_MAP = {
     "ko": "korean",
     "ja": "japan",
@@ -54,11 +57,14 @@ def _pick_device() -> str:
 def _pick_engine() -> str:
     """Всегда используем Transformers backend.
 
-    PaddleOCR 3.5.0 поддерживает два inference backend:
+    PaddleOCR 3.7.0 поддерживает несколько inference backend:
       - 'paddle'       — PaddlePaddle (старый, тяжёлый)
       - 'transformers' — HuggingFace Transformers (новый, без PaddlePaddle)
 
     Фиксируем transformers — не зависит от наличия PaddlePaddle.
+    PP-OCRv6 требует transformers>=5.12.0 (архитектуры pp_ocrv6_*_det/rec
+    встроены в transformers начиная с 5.12.0; docs paddleocr говорят >=5.8.0,
+    но реально PP-OCRv6 грузится только с 5.12.0).
     """
     return "transformers"
 
@@ -71,7 +77,7 @@ def get_paddleocr_engine(source_lang: str):
         from paddleocr import PaddleOCR
     except ModuleNotFoundError as exc:
         raise RuntimeError(
-            "PaddleOCR не установлен. Установи: pip install 'paddleocr>=3.5.0' paddlex"
+            "PaddleOCR не установлен. Установи: pip install 'paddleocr>=3.7.0' paddlex"
         ) from exc
 
     # Подавляем лишние логи paddlex
@@ -142,7 +148,7 @@ def _iter_paddle_lines(result: Any) -> Iterable[tuple[Any, Any]]:
     """Универсальный парсер результатов PaddleOCR 3.x.
 
     Поддерживает оба формата ответа:
-    - dict с ключами rec_texts/rec_scores/rec_polys (новый API 3.x)
+    - dict с ключами rec_texts/rec_scores/rec_polys (новый API 3.x, predict())
     - list[list[[bbox, [text, conf]]]]               (старый API)
     """
     if result is None:
@@ -152,7 +158,7 @@ def _iter_paddle_lines(result: Any) -> Iterable[tuple[Any, Any]]:
     if hasattr(result, "get"):
         texts  = result.get("rec_texts")
         scores = result.get("rec_scores")
-        polys  = result.get("rec_polys") or result.get("dt_polys")
+        polys  = result.get("rec_polys") or result.get("dt_polys") or result.get("rec_boxes")
 
         if texts is not None and scores is not None and polys is not None:
             for bbox, text, conf in zip(polys, texts, scores):
@@ -185,7 +191,7 @@ def recognize_blocks(
     ocr = get_paddleocr_engine(source_ocr_lang)
     np_image = _prepare_image(image)
 
-    # PaddleOCR 3.x использует predict(), старые версии — ocr()
+    # PaddleOCR 3.7.0 использует predict(), старые версии — ocr()
     if hasattr(ocr, "predict"):
         results = ocr.predict(np_image)
     else:

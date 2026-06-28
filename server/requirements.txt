@@ -6,12 +6,15 @@ requests>=2.32.0
 numpy>=2.2.0,<3.0.0
 pillow>=11.0.0
 opencv-python>=4.11.0
-transformers>=5.4.0
+transformers>=5.12.0
 accelerate>=1.10.0
 
-# PaddleOCR 3.5.0 + PaddleX (engine='transformers' работает без PaddlePaddle)
-paddleocr>=3.5.0
-paddlex>=3.5.2
+# PaddleOCR 3.7.0 + PaddleX (engine='transformers' работает без PaddlePaddle)
+# 3.7.0: PP-OCRv6 — единая модель на 50 языков (zh/zh_tra/en/ja + 46 латиниц).
+# PP-OCRv6-архитектуры (pp_ocrv6_*_det/rec) встроены в transformers >=5.12.0.
+# Docs paddleocr говорят >=5.8.0, но реально PP-OCRv6 грузится только с 5.12.0.
+paddleocr>=3.7.0,<3.8.0
+paddlex>=3.7.0,<3.8.0
 
 # llama-cpp-python для GGUF инференса.
 # CPU: pip install llama-cpp-python
