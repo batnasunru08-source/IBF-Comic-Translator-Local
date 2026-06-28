@@ -9,7 +9,7 @@
 - `server/` — FastAPI 服务器，执行 OCR、翻译和文字渲染
 
 **技术栈：**
-- OCR: `PaddleOCR 3.5`（支持 `engine='transformers'` — 无需 PaddlePaddle）
+- OCR: `PaddleOCR 3.7`（PP-OCRv6，支持 `engine='transformers'` — 无需 PaddlePaddle）
 - 翻译: `tencent/Hy-MT2-1.8B`（GGUF 格式，通过 llama-cpp-python）
 - 运行环境: `Linux x86_64` 或 `WSL2`
 

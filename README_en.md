@@ -9,7 +9,7 @@ The project consists of two parts:
 - `server/` — FastAPI server that performs OCR, translation, and text rendering over the original image
 
 **Tech stack:**
-- OCR: `PaddleOCR 3.5` (supports `engine='transformers'` — no PaddlePaddle required)
+- OCR: `PaddleOCR 3.7` (PP-OCRv6, `engine='transformers'` — no PaddlePaddle required)
 - Translation: `tencent/Hy-MT2-1.8B` (GGUF via llama-cpp-python)
 - Runtime: `Linux x86_64` or `WSL2`
 

@@ -9,7 +9,7 @@
 - `server/` — FastAPI-сервер, который делает OCR, перевод и рендер текста поверх исходной картинки
 
 **Стек:**
-- OCR: `PaddleOCR 3.5` (поддерживает `engine='transformers'` — без PaddlePaddle)
+- OCR: `PaddleOCR 3.7` (PP-OCRv6, `engine='transformers'` — без PaddlePaddle)
 - Translation: `tencent/Hy-MT2-1.8B` (GGUF через llama-cpp-python)
 - Runtime: `Linux x86_64` или `WSL2`
 
