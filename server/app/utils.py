@@ -72,6 +72,11 @@ def load_translation_filter(config_path: Path | None = None) -> dict[str, frozen
         "watermark_tokens": frozenset(t.lower() for t in data.get("watermark_tokens", [])),
         "known_repeats": frozenset(t.lower() for t in data.get("known_repeats", [])),
         "noise_tokens": frozenset(t.lower() for t in data.get("noise_tokens", [])),
+        # Пороги фильтра огромных блоков (см. pipeline._filter_huge_blocks).
+        # Дефолты — для обратной совместимости со старым filter.json без этих ключей.
+        "huge_block_area_ratio": float(data.get("huge_block_area_ratio", 0.20)),
+        "huge_block_min_chars": int(data.get("huge_block_min_chars", 30)),
+        "huge_block_min_density": float(data.get("huge_block_min_density", 0.0003)),
     }
     _translation_filter_cache[key] = (mtime, result)
     return result

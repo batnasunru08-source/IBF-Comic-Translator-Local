@@ -45,6 +45,56 @@ def _block_center(block: TextBlock) -> tuple[float, float]:
     return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
 
 
+def _filter_huge_blocks(
+    blocks: list[TextBlock],
+    image_shape: tuple[int, ...],
+) -> list[TextBlock]:
+    """Скипает огромные блоки (area > huge_block_area_ratio от изображения)
+    с малым текстом — типичный признак ложного слияния OCR (целая панель, фон).
+
+    Легитимные большие блоки (narration через всю панель) имеют много текста,
+    поэтому их не трогаем: срабатывает только при ОДНОВРЕМЕННОМ выполнении
+    трёх условий:
+      area_ratio > huge_block_area_ratio (по умолчанию 0.20)
+      AND chars    < huge_block_min_chars  (по умолчанию 30)
+      AND density  < huge_block_min_density (по умолчанию 0.0003 символов на px²)
+
+    Пороги берутся из data/translation_filter.json (правятся без перезапуска кода).
+    """
+    h, w = int(image_shape[0]), int(image_shape[1])
+    image_area = max(1, h * w)
+    cfg = load_translation_filter()
+    huge_ratio = cfg["huge_block_area_ratio"]
+    min_chars = cfg["huge_block_min_chars"]
+    min_density = cfg["huge_block_min_density"]
+
+    kept: list[TextBlock] = []
+    skipped: list[str] = []
+    for idx, block in enumerate(blocks, start=1):
+        area = _block_area(block)
+        area_ratio = area / image_area
+        text = (block.source_text or "").strip()
+        text_len = len(text)
+
+        if area_ratio > huge_ratio:
+            density = text_len / area
+            if text_len < min_chars and density < min_density:
+                skipped.append(
+                    f"block#{idx} area={area_ratio * 100:.1f}% "
+                    f"chars={text_len} density={density:.6f}"
+                )
+                continue
+        kept.append(block)
+
+    if skipped:
+        print(
+            f"[PIPELINE] filtered {len(skipped)} huge block(s) "
+            f"(area>{huge_ratio * 100:.0f}% & chars<{min_chars} & "
+            f"density<{min_density}): {'; '.join(skipped)}"
+        )
+    return kept
+
+
 def looks_translatable(text: str) -> bool:
     """Фильтрует мусор: одиночные символы, коды, артефакты OCR.
 
@@ -475,6 +525,11 @@ def process_image_bytes(
             f"[PIPELINE] filtered {pre_len_filter - len(blocks)} short block(s) "
             f"after grouping (len < 5)"
         )
+
+    # Фильтр огромных блоков с малым текстом — ложные слияния OCR (целая панель,
+    # фон). Легитимные большие narration-боксы имеют много текста и не скипаются.
+    # Пороги — в data/translation_filter.json, правятся без перезапуска кода.
+    blocks = _filter_huge_blocks(blocks, np_image.shape)
 
     debug_img = np_image.copy()
     region_debug_img = np_image.copy()
