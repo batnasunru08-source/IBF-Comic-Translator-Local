@@ -1,8 +1,11 @@
 const DEFAULT_API_BASE = "http://127.0.0.1:8000";
 let API_BASE = DEFAULT_API_BASE;
 const MAX_UPLOAD_DIMENSION = 2200;
+const SCREENSHOT_SETTLE_MS = 200;
 const MAX_CACHE_BYTES = 50 * 1024 * 1024; // 50MB на все кеши dataUrl
 const MAX_CACHE_ENTRIES = 64;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const TRANSLATION_CACHE = new Map();
 const RESULT_DATA_URL_CACHE = new Map();
 let resultCacheBytes = 0;
@@ -147,6 +150,7 @@ async function captureVisibleImageBlob(sender, message) {
   if (!chrome.tabs?.captureVisibleTab) throw new Error("chrome.tabs.captureVisibleTab is unavailable");
 
   const windowId = sender?.tab?.windowId;
+  await delay(SCREENSHOT_SETTLE_MS);
   const screenshotDataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   const screenshotBlob = dataUrlToBlob(screenshotDataUrl);
   const bitmap = await createImageBitmap(screenshotBlob);
