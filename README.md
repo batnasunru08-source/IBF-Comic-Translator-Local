@@ -134,6 +134,11 @@ MODEL_FILE=HY-MT2-7B-Q8_0.gguf python -m uvicorn main:app --host 0.0.0.0 --port 
 
 В `docker-compose.yml` модель переключается добавлением строки `MODEL_FILE=HY-MT2-7B-Q8_0.gguf` в `environment:`.
 
+Дополнительные переменные окружения:
+- `HYMT2_TEMPERATURE`, `HYMT2_TOP_P`, `HYMT2_TOP_K`, `HYMT2_REPETITION_PENALTY` —
+  sampling-параметры переводчика (по умолчанию рекомендованные карточкой Hy-MT2:
+  0.7 / 0.6 / 20 / 1.05)
+- `DEBUG_IMAGES=1` — сохранять debug-картинки в `server/results/_debug/{digest}/`
 
 При первом запуске сервер скачает модели PaddleOCR (~200 MB). Это займёт 1–2 минуты.
 
@@ -205,10 +210,15 @@ python -c "from llama_cpp import Llama; print('OK')"
 ```
 При GPU-сборке в логах при загрузке модели должно быть `ggml_cuda_init: found N CUDA devices`.
 
-**OCR не находит текст:**
-- Смотрите `debug_dir` в meta-ответе сервера
-- Откройте `grouped_blocks.png` в папке debug
-- Проверьте `crop_*.png` для каждого блока
+**OCR не находит текст / нужно отладить фильтрацию:**
+- Запустите сервер с `DEBUG_IMAGES=1` — debug-картинки (`crop_*.png`,
+  `text_regions.png`, `grouped_blocks.png`) сохранятся в `server/results/_debug/{digest}/`
+  (имя папки = имя файла результата в `server/results/` без расширения;
+  свежие — `ls -t server/results/_debug/ | head`)
+- В `meta` ответа смотрите `filtered_blocks` — там причина скипа каждого блока
+  (`too_short`, `sfx_token`, `low_conf`, `watermark`, ...)
+- Пороги фильтра — в `server/data/translation_filter.json`, перечитываются
+  автоматически при изменении файла (перезапуск не нужен)
 
 ---
 
