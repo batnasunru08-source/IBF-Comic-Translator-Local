@@ -39,5 +39,22 @@
     "umhae",
     "ittoirhll",
     "einimi1"
-  ]
+  ],
+  "sfx_tokens": [
+    "boom", "bang", "crash", "thud", "thunk", "thump", "whoosh", "woosh",
+    "swoosh", "pow", "zap", "bam", "wham", "kaboom", "clang", "clank",
+    "screech", "rumble", "splash", "hiss", "buzz", "snap", "crack",
+    "crackle", "crunch", "grr", "roar", "whack", "smack", "slam",
+    "whirr", "vroom", "ding", "plop", "drip", "shatter", "ratatat"
+  ],
+  "sfx_mode": "skip",
+  "min_text_len": 5,
+  "min_alnum_ratio": 0.40,
+  "ocr_conf_min": 0.15,
+  "low_conf_threshold": 0.45,
+  "low_conf_max_len": 8,
+  "cjk_min_text_len": 1,
+  "huge_block_area_ratio": 0.20,
+  "huge_block_min_chars": 30,
+  "huge_block_min_density": 0.0003
 }

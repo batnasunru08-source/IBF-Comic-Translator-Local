@@ -67,6 +67,7 @@ class TranslateFromUrlRequest(BaseModel):
     referer: str = Field(default="", description="Referer used for image download")
     source_ocr_lang: str = Field(default="en", description="OCR language")
     target_lang: str = Field(default="Russian", description="Translation target language")
+    result_format: str = Field(default="png", description="Result image format: png or webp")
 
 
 @app.get("/health")
@@ -109,6 +110,7 @@ def translate_from_url(payload: TranslateFromUrlRequest, request: Request):
         RESULTS_DIR,
         source_ocr_lang=payload.source_ocr_lang,
         target_lang=payload.target_lang,
+        result_format=payload.result_format,
     )
     total_ms = round((perf_counter() - request_started) * 1000)
     print(
@@ -129,6 +131,7 @@ async def translate_upload(
     file: UploadFile = File(...),
     source_ocr_lang: str = Form("en"),
     target_lang: str = Form("Russian"),
+    result_format: str = Form("png"),
 ):
     request_started = perf_counter()
     content = await file.read()
@@ -137,6 +140,7 @@ async def translate_upload(
         RESULTS_DIR,
         source_ocr_lang=source_ocr_lang,
         target_lang=target_lang,
+        result_format=result_format,
     )
     base_url = str(request.base_url).rstrip("/")
     total_ms = round((perf_counter() - request_started) * 1000)

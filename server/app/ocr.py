@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from .models import TextBlock
-from .utils import looks_like_meaningful_text
+from .utils import looks_like_meaningful_text, load_translation_filter
 
 warnings.filterwarnings(
     "ignore",
@@ -198,6 +198,7 @@ def recognize_blocks(
         results = ocr.ocr(np_image, cls=True)
 
     blocks: list[TextBlock] = []
+    conf_min = float(load_translation_filter()["ocr_conf_min"])
 
     for idx, (bbox, rec) in enumerate(_iter_paddle_lines(results), start=1):
         text = str(rec[0] or "").strip()
@@ -208,7 +209,7 @@ def recognize_blocks(
 
         print(f"[OCR] paddle_{idx:03d}: lang={source_ocr_lang} conf={conf:.3f} text={text!r}")
 
-        if conf < 0.15:
+        if conf < conf_min:
             continue
         if not looks_like_meaningful_text(text):
             continue
@@ -223,7 +224,7 @@ def recognize_blocks(
             if x2 > x1 and y2 > y1:
                 image.crop((x1, y1, x2, y2)).save(debug_dir / f"crop_{idx:03d}.png")
 
-        blocks.append(TextBlock(box=box, source_text=text))
+        blocks.append(TextBlock(box=box, source_text=text, conf=conf))
 
     blocks.sort(key=lambda b: (b.bounds[1], b.bounds[0]))
     return blocks

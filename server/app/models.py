@@ -12,6 +12,7 @@ Point = Tuple[int, int]
 class TextBlock:
     box: List[Point]
     source_text: str
+    conf: float = 1.0
     translated_text: str = ""
 
     @cached_property

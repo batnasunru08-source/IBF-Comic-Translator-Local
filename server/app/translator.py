@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = Path(__file__).parent.parent / "models"
 DEFAULT_MODEL_FILE = "Hy-MT2-1.8B-Q8_0.gguf"
 
-_TEMPERATURE        = 0.7
-_TOP_P              = 0.6
-_TOP_K              = 20
-_REPETITION_PENALTY = 1.05
+_TEMPERATURE        = float(os.environ.get("HYMT2_TEMPERATURE", "0.7"))
+_TOP_P              = float(os.environ.get("HYMT2_TOP_P", "0.6"))
+_TOP_K              = int(os.environ.get("HYMT2_TOP_K", "20"))
+_REPETITION_PENALTY = float(os.environ.get("HYMT2_REPETITION_PENALTY", "1.05"))
 _MAX_TOKENS         = 2048  # больше для батча
 
 # Промпт для одного текста

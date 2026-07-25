@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import shutil
-import tempfile
+import os
 from io import BytesIO
 from time import perf_counter
 from pathlib import Path
 from typing import Any
 import json
-import re
 
 import cv2
 import numpy as np
@@ -17,7 +15,7 @@ from .detector import CandidateBox
 from .models import TextBlock
 from .ocr import recognize_blocks
 from .renderer import inpaint_text, render_translations
-from .utils import load_translation_filter, sha1_bytes
+from .utils import load_translation_filter, looks_translatable, sha1_bytes
 
 
 # Кеш распознанных OCR-блоков по (digest, source_ocr_lang).
@@ -25,6 +23,10 @@ from .utils import load_translation_filter, sha1_bytes
 # TextBlock — mutable (translated_text), поэтому храним и отдаём копии.
 _OCR_CACHE: dict[tuple[str, str], list[TextBlock]] = {}
 _OCR_CACHE_MAX = 8
+
+# DEBUG_IMAGES=1: debug-картинки (crop_*, text_regions, grouped_blocks)
+# пишутся в results/_debug/{digest}/ и сохраняются. Без флага — ноль debug-I/O.
+_DEBUG_IMAGES = os.environ.get("DEBUG_IMAGES", "").strip() == "1"
 
 
 def _overlap_len(a1: int, a2: int, b1: int, b2: int) -> int:
@@ -48,7 +50,7 @@ def _block_center(block: TextBlock) -> tuple[float, float]:
 def _filter_huge_blocks(
     blocks: list[TextBlock],
     image_shape: tuple[int, ...],
-) -> list[TextBlock]:
+) -> tuple[list[TextBlock], list[dict[str, str]]]:
     """Скипает огромные блоки (area > huge_block_area_ratio от изображения)
     с малым текстом — типичный признак ложного слияния OCR (целая панель, фон).
 
@@ -60,6 +62,10 @@ def _filter_huge_blocks(
       AND density  < huge_block_min_density (по умолчанию 0.0003 символов на px²)
 
     Пороги берутся из data/translation_filter.json (правятся без перезапуска кода).
+
+    Возвращает (kept, skipped_meta): оставшиеся блоки и список скипнутых
+    в формате {"text": <текст блока, до 120 символов>, "reason": "huge_block"}
+    — для meta["filtered_blocks"].
     """
     h, w = int(image_shape[0]), int(image_shape[1])
     image_area = max(1, h * w)
@@ -70,6 +76,7 @@ def _filter_huge_blocks(
 
     kept: list[TextBlock] = []
     skipped: list[str] = []
+    skipped_meta: list[dict[str, str]] = []
     for idx, block in enumerate(blocks, start=1):
         area = _block_area(block)
         area_ratio = area / image_area
@@ -83,6 +90,7 @@ def _filter_huge_blocks(
                     f"block#{idx} area={area_ratio * 100:.1f}% "
                     f"chars={text_len} density={density:.6f}"
                 )
+                skipped_meta.append({"text": text[:120], "reason": "huge_block"})
                 continue
         kept.append(block)
 
@@ -92,82 +100,7 @@ def _filter_huge_blocks(
             f"(area>{huge_ratio * 100:.0f}% & chars<{min_chars} & "
             f"density<{min_density}): {'; '.join(skipped)}"
         )
-    return kept
-
-
-def looks_translatable(text: str) -> bool:
-    """Фильтрует мусор: одиночные символы, коды, артефакты OCR.
-
-    Правила:
-    - минимум 2 символа
-    - доля буквенно-цифровых символов >= 40%
-    - минимум 2 буквы
-    - не повторяющийся символ ("####", "....")
-    - не артефакты OCR ("\\\\", "$...$", "{}", "[]")
-    - не набор одиночных букв ("W B", "V T", "HM? J")
-    - не повторяющийся слог ("ofof", "abab")
-    - не водяной знак/подпись ("pixiv MadBull")
-
-    Списки исключений загружаются из data/translation_filter.json.
-    Файл проверяется на изменение при каждом вызове.
-    """
-    text = (text or "").strip()
-    if len(text) < 2:
-        return False
-    alnum = sum(c.isalnum() for c in text)
-    if alnum / len(text) < 0.40:
-        return False
-    letters = sum(c.isalpha() for c in text)
-    if letters < 2:
-        return False
-    if len(set(text.replace(" ", ""))) <= 1:
-        return False
-    if "\\" in text:
-        return False
-    if re.search(r'\$[^$]*\$', text):
-        return False
-    if re.search(r'[\{\}\[\]]', text):
-        return False
-
-    # Набор одиночных букв: "W B", "V T", "HM? J"
-    words = text.split()
-    alpha_words = [re.sub(r'[^a-zA-Z\u0400-\u04FF\u3040-\u30FF\u4E00-\u9FFF]', '', w)
-                   for w in words]
-    alpha_words = [w for w in alpha_words if w]
-    if alpha_words and all(len(w) == 1 for w in alpha_words):
-        return False
-    if len(alpha_words) >= 2:
-        single_ratio = sum(1 for w in alpha_words if len(w) == 1) / len(alpha_words)
-        # Для коротких фраз (≤ 3 слов) порог ниже: "HM? J" → 1/2 = 0.5 → skip
-        threshold = 0.5 if len(alpha_words) <= 3 else 0.6
-        if single_ratio >= threshold:
-            return False
-
-    # Повторяющийся слог: "ofof", "abab" (но не "haha", "mama")
-    t_clean = text.lower().replace(" ", "")
-    filter_config = load_translation_filter()
-    known_repeats = filter_config["known_repeats"]
-    if 4 <= len(t_clean) <= 8 and t_clean.isalpha() and t_clean not in known_repeats:
-        half = len(t_clean) // 2
-        if t_clean[:half] == t_clean[half:half * 2]:
-            return False
-
-    # Водяные знаки / подписи авторов
-    text_lower = text.lower()
-    if any(token in text_lower for token in filter_config["watermark_tokens"]):
-        return False
-
-    # Мусорные токены: артефакты OCR, случайные буквы и т.п.
-    if any(token in text_lower for token in filter_config["noise_tokens"]):
-        return False
-
-    # SFX (звукоподражания манги): ALL_CAPS, ≤2 слов, ≤10 букв.
-    if text.isupper() and len(text) <= 15:
-        alpha_chars = sum(c.isalpha() for c in text)
-        if alpha_chars <= 10 and len(text.split()) <= 2:
-            return False
-
-    return True
+    return kept, skipped_meta
 
 
 def _component_bounds(items: list[TextBlock]) -> tuple[int, int, int, int]:
@@ -462,6 +395,7 @@ def group_blocks(
                 TextBlock(
                     box=[(gx1, gy1), (gx2, gy1), (gx2, gy2), (gx1, gy2)],
                     source_text=text,
+                    conf=min((item.conf for item in items), default=1.0),
                 )
             )
 
@@ -473,13 +407,17 @@ def process_image_bytes(
     results_dir: Path,
     source_ocr_lang: str = "en",
     target_lang: str = "Russian",
+    result_format: str = "png",
 ) -> tuple[Path, dict[str, Any]]:
     total_started = perf_counter()
     image = Image.open(BytesIO(content)).convert("RGB")
     np_image = np.array(image)
 
     digest = sha1_bytes(content)
-    debug_dir = Path(tempfile.mkdtemp(prefix=f"{digest}_debug_"))
+    debug_dir: Path | None = None
+    if _DEBUG_IMAGES:
+        debug_dir = results_dir / "_debug" / digest
+        debug_dir.mkdir(parents=True, exist_ok=True)
 
     cache_key = (digest, source_ocr_lang)
     ocr_started = perf_counter()
@@ -487,7 +425,7 @@ def process_image_bytes(
     if cached_blocks is not None:
         # Cache hit: переиспользуем OCR-результат, отдаём копии TextBlock.
         raw_blocks = [
-            TextBlock(box=list(b.box), source_text=b.source_text)
+            TextBlock(box=list(b.box), source_text=b.source_text, conf=b.conf)
             for b in cached_blocks
         ]
         # LRU: перемещаем ключ в конец
@@ -504,7 +442,7 @@ def process_image_bytes(
         if len(_OCR_CACHE) >= _OCR_CACHE_MAX:
             _OCR_CACHE.pop(next(iter(_OCR_CACHE)))
         _OCR_CACHE[cache_key] = [
-            TextBlock(box=list(b.box), source_text=b.source_text)
+            TextBlock(box=list(b.box), source_text=b.source_text, conf=b.conf)
             for b in raw_blocks
         ]
     ocr_ms = round((perf_counter() - ocr_started) * 1000)
@@ -516,57 +454,51 @@ def process_image_bytes(
     group_ms = round((perf_counter() - group_started) * 1000)
     print(f"[PIPELINE] blocks grouped: {len(blocks)}")
 
-    # Фильтр по длине ПОСЛЕ группировки: иначе короткие слова-мости
-    # (and/is/used) выпадут и блоки потеряют связность.
-    pre_len_filter = len(blocks)
-    blocks = [b for b in blocks if len((b.source_text or "").strip()) >= 5]
-    if len(blocks) < pre_len_filter:
-        print(
-            f"[PIPELINE] filtered {pre_len_filter - len(blocks)} short block(s) "
-            f"after grouping (len < 5)"
-        )
-
     # Фильтр огромных блоков с малым текстом — ложные слияния OCR (целая панель,
     # фон). Легитимные большие narration-боксы имеют много текста и не скипаются.
     # Пороги — в data/translation_filter.json, правятся без перезапуска кода.
-    blocks = _filter_huge_blocks(blocks, np_image.shape)
+    # Скипнутые блоки тоже попадают в meta["filtered_blocks"] (reason=huge_block).
+    filtered_blocks_meta: list[dict[str, str]] = []
+    blocks, huge_skips = _filter_huge_blocks(blocks, np_image.shape)
+    filtered_blocks_meta.extend(huge_skips)
 
-    debug_img = np_image.copy()
-    region_debug_img = np_image.copy()
-    for region_index, region in enumerate(regions, start=1):
-        cv2.rectangle(
-            region_debug_img,
-            (region.x1, region.y1),
-            (region.x2, region.y2),
-            (0, 180, 0),
-            2,
-        )
-        cv2.putText(
-            region_debug_img,
-            str(region_index),
-            (region.x1, max(20, region.y1 - 5)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 180, 0),
-            2,
-            cv2.LINE_AA,
-        )
-    Image.fromarray(region_debug_img).save(debug_dir / "text_regions.png")
+    if debug_dir is not None:
+        debug_img = np_image.copy()
+        region_debug_img = np_image.copy()
+        for region_index, region in enumerate(regions, start=1):
+            cv2.rectangle(
+                region_debug_img,
+                (region.x1, region.y1),
+                (region.x2, region.y2),
+                (0, 180, 0),
+                2,
+            )
+            cv2.putText(
+                region_debug_img,
+                str(region_index),
+                (region.x1, max(20, region.y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 180, 0),
+                2,
+                cv2.LINE_AA,
+            )
+        Image.fromarray(region_debug_img).save(debug_dir / "text_regions.png")
 
-    for i, block in enumerate(blocks, start=1):
-        x1, y1, x2, y2 = block.bounds
-        cv2.rectangle(debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        cv2.putText(
-            debug_img,
-            str(i),
-            (x1, max(20, y1 - 5)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 0, 0),
-            2,
-            cv2.LINE_AA,
-        )
-    Image.fromarray(debug_img).save(debug_dir / "grouped_blocks.png")
+        for i, block in enumerate(blocks, start=1):
+            x1, y1, x2, y2 = block.bounds
+            cv2.rectangle(debug_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cv2.putText(
+                debug_img,
+                str(i),
+                (x1, max(20, y1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 0, 0),
+                2,
+                cv2.LINE_AA,
+            )
+        Image.fromarray(debug_img).save(debug_dir / "grouped_blocks.png")
 
     from .translator import get_translator
 
@@ -574,14 +506,16 @@ def process_image_bytes(
     translator = get_translator()
 
     texts = [block.source_text for block in blocks]
-    translatable_flags = [looks_translatable(t) for t in texts]
-    for i, (text, ok) in enumerate(zip(texts, translatable_flags), start=1):
-        status = "OK" if ok else "SKIP"
+    filter_results = [looks_translatable(b.source_text, conf=b.conf) for b in blocks]
+    for i, (text, (ok, reason)) in enumerate(zip(texts, filter_results), start=1):
+        status = "OK" if ok else f"SKIP:{reason}"
         print(f"[PIPELINE] source[{i}] [{status}]: {text!r}")
+        if not ok:
+            filtered_blocks_meta.append({"text": text, "reason": reason})
 
     # Отправляем на перевод только осмысленные блоки,
     # для мусора сразу подставляем пустую строку
-    texts_to_translate = [t if ok else "" for t, ok in zip(texts, translatable_flags)]
+    texts_to_translate = [t if ok else "" for t, (ok, _) in zip(texts, filter_results)]
     n_skip = sum(1 for t in texts_to_translate if not t)
     if n_skip:
         print(f"[PIPELINE] skipping {n_skip}/{len(texts)} blocks before translation")
@@ -610,22 +544,31 @@ def process_image_bytes(
     render_ms = round((perf_counter() - render_started) * 1000)
 
     save_started = perf_counter()
-    out_path = results_dir / f"{digest}.png"
-    rendered.save(out_path)
+    ext = "webp" if result_format == "webp" else "png"
+    out_path = results_dir / f"{digest}.{ext}"
+    if ext == "webp":
+        try:
+            rendered.save(out_path, "WEBP", quality=95)
+        except ValueError:
+            # WebP лимит 16383px по стороне (длинные вебтун-страницы) — fallback на PNG
+            out_path = results_dir / f"{digest}.png"
+            rendered.save(out_path, "PNG")
+    else:
+        rendered.save(out_path, "PNG")
+    saved_format = out_path.suffix.lstrip(".")
     save_ms = round((perf_counter() - save_started) * 1000)
     translator_init_ms = round((translation_started - translator_started) * 1000)
     total_ms = round((perf_counter() - total_started) * 1000)
 
-    # Чистим временную debug-папку — в results/ остаётся только финальный PNG
-    shutil.rmtree(debug_dir, ignore_errors=True)
-
     meta = {
         "source_ocr_lang": source_ocr_lang,
         "target_lang": target_lang,
+        "result_format": saved_format,
         "boxes_detected": len(raw_blocks),
         "region_candidates": len(regions),
         "boxes_grouped": len(blocks),
         "boxes_used": len(blocks_to_render),
+        "filtered_blocks": filtered_blocks_meta,
         "source_texts": [block.source_text for block in blocks],
         "translated_texts": [block.translated_text for block in blocks],
         "timings_ms": {
