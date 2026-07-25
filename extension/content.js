@@ -820,14 +820,14 @@ function debounce(fn, ms) {
 const debouncedScanImages = debounce(scanImages, 100);
 
 const observer = new MutationObserver(() => {
-  window.requestAnimationFrame(scanImages);
+  debouncedScanImages();
 });
 
 observer.observe(document.documentElement, {
   childList: true,
   subtree: true,
   attributes: true,
-  attributeFilter: ["src", "srcset", "class"]
+  attributeFilter: ["src", "srcset"]
 });
 
 window.addEventListener("scroll", debouncedScanImages, { passive: true });

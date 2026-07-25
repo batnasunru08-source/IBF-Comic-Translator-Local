@@ -110,7 +110,8 @@ async function requestTranslateFromUrl(message) {
       page_url: message.pageUrl || "",
       referer: message.pageUrl || "",
       source_ocr_lang: message.sourceOcrLang || "en",
-      target_lang: message.targetLang || "Russian"
+      target_lang: message.targetLang || "Russian",
+      result_format: "webp"
     })
   });
   return readJsonResponse(response);
@@ -285,6 +286,7 @@ async function requestTranslateUpload(message, blob) {
   formData.append("file", blob, `source.${subtype}`);
   formData.append("source_ocr_lang", message.sourceOcrLang || "en");
   formData.append("target_lang", message.targetLang || "Russian");
+  formData.append("result_format", "webp");
 
   const response = await fetch(`${API_BASE}/translate-upload`, { method: "POST", body: formData });
   return readJsonResponse(response);
