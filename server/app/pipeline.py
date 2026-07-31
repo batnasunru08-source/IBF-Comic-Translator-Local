@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from io import BytesIO
 from time import perf_counter
 from pathlib import Path
@@ -27,6 +28,12 @@ _OCR_CACHE_MAX = 8
 # DEBUG_IMAGES=1: debug-картинки (crop_*, text_regions, grouped_blocks)
 # пишутся в results/_debug/{digest}/ и сохраняются. Без флага — ноль debug-I/O.
 _DEBUG_IMAGES = os.environ.get("DEBUG_IMAGES", "").strip() == "1"
+
+# Общий переводчик (Llama) и PaddleOCR-движки не потокобезопасны
+# (llama-cpp predict из двух потоков — краш/порча KV-кэша), плюс _OCR_CACHE
+# мутируется из потоков. Поэтому обработка изображения сериализуется целиком:
+# один процесс — одно задание. Это же служит бэкпрешшуром для autoTranslate.
+_PROCESS_LOCK = threading.Lock()
 
 
 def _overlap_len(a1: int, a2: int, b1: int, b2: int) -> int:
@@ -403,6 +410,27 @@ def group_blocks(
 
 
 def process_image_bytes(
+    content: bytes,
+    results_dir: Path,
+    source_ocr_lang: str = "en",
+    target_lang: str = "Russian",
+    result_format: str = "png",
+) -> tuple[Path, dict[str, Any]]:
+    """Сериализованная точка входа: одна картинка обрабатывается за раз.
+
+    См. комментарий у _PROCESS_LOCK — общий Llama/PaddleOCR не потокобезопасны.
+    """
+    with _PROCESS_LOCK:
+        return _process_image_bytes_impl(
+            content,
+            results_dir,
+            source_ocr_lang=source_ocr_lang,
+            target_lang=target_lang,
+            result_format=result_format,
+        )
+
+
+def _process_image_bytes_impl(
     content: bytes,
     results_dir: Path,
     source_ocr_lang: str = "en",

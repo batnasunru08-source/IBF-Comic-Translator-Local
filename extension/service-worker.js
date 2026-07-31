@@ -73,12 +73,6 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-function rememberCacheValue(cache, key, value) {
-  if (cache.has(key)) cache.delete(key);
-  cache.set(key, value);
-  while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-}
-
 function makeTranslationCacheKey(message) {
   return JSON.stringify([
     message.imageUrl || "",

@@ -126,7 +126,7 @@ def translate_from_url(payload: TranslateFromUrlRequest, request: Request):
 
 
 @app.post("/translate-upload")
-async def translate_upload(
+def translate_upload(
     request: Request,
     file: UploadFile = File(...),
     source_ocr_lang: str = Form("en"),
@@ -134,7 +134,7 @@ async def translate_upload(
     result_format: str = Form("png"),
 ):
     request_started = perf_counter()
-    content = await file.read()
+    content = file.file.read()
     out_path, meta = process_image_bytes(
         content,
         RESULTS_DIR,
