@@ -55,6 +55,26 @@
     "message": "Измените, если сервер работает на другом хосте или порте.",
     "description": "Подсказка для поля URL API-сервера"
   },
+  "popup_hotkey_enable": {
+    "message": "Перевод по горячей клавише",
+    "description": "Метка чекбокса горячей клавиши"
+  },
+  "popup_hotkey_key": {
+    "message": "Клавиша",
+    "description": "Метка поля клавиши"
+  },
+  "popup_hotkey_key_hint": {
+    "message": "Одна буква A–Z или цифра 0–9. Работает независимо от раскладки.",
+    "description": "Подсказка для поля клавиши"
+  },
+  "popup_hotkey_mode_cursor": {
+    "message": "Картинка под курсором",
+    "description": "Режим хоткея: картинка под курсором"
+  },
+  "popup_hotkey_mode_visible": {
+    "message": "Все видимые картинки",
+    "description": "Режим хоткея: все видимые картинки"
+  },
   "button_translate": {
     "message": "Перевести изображение",
     "description": "Подсказка кнопки"

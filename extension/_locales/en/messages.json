@@ -55,6 +55,26 @@
     "message": "Change if your server runs on a different host or port.",
     "description": "Hint for the API base URL input"
   },
+  "popup_hotkey_enable": {
+    "message": "Hotkey translation",
+    "description": "Hotkey checkbox label"
+  },
+  "popup_hotkey_key": {
+    "message": "Key",
+    "description": "Hotkey key field label"
+  },
+  "popup_hotkey_key_hint": {
+    "message": "One letter A–Z or digit 0–9. Works regardless of keyboard layout.",
+    "description": "Hint for the hotkey key field"
+  },
+  "popup_hotkey_mode_cursor": {
+    "message": "Image under cursor",
+    "description": "Hotkey mode: image under cursor"
+  },
+  "popup_hotkey_mode_visible": {
+    "message": "All visible images",
+    "description": "Hotkey mode: all visible images"
+  },
   "button_translate": {
     "message": "Translate image",
     "description": "Button title tooltip"

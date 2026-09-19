@@ -55,6 +55,26 @@
     "message": "Modifiez si le serveur tourne sur un autre hôte ou port.",
     "description": "Texte d'aide pour le champ URL du serveur API"
   },
+  "popup_hotkey_enable": {
+    "message": "Traduction par raccourci clavier",
+    "description": "Étiquette de la case raccourci"
+  },
+  "popup_hotkey_key": {
+    "message": "Touche",
+    "description": "Étiquette du champ touche"
+  },
+  "popup_hotkey_key_hint": {
+    "message": "Une lettre A–Z ou un chiffre 0–9. Fonctionne quelle que soit la disposition du clavier.",
+    "description": "Astuce pour le champ touche"
+  },
+  "popup_hotkey_mode_cursor": {
+    "message": "Image sous le curseur",
+    "description": "Mode du raccourci : image sous le curseur"
+  },
+  "popup_hotkey_mode_visible": {
+    "message": "Toutes les images visibles",
+    "description": "Mode du raccourci : toutes les images visibles"
+  },
   "button_translate": {
     "message": "Traduire l'image",
     "description": "Infobulle du bouton"

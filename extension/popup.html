@@ -111,6 +111,32 @@
     </div>
   </div>
 
+  <div class="section" id="hotkeySection">
+    <label>
+      <input type="checkbox" id="hotkeyEnabled">
+      <span data-i18n="popup_hotkey_enable">Hotkey translation</span>
+    </label>
+
+    <div class="field">
+      <label for="hotkeyKey" data-i18n="popup_hotkey_key">Key</label>
+      <input type="text" id="hotkeyKey" class="api-input" maxlength="1" autocomplete="off" spellcheck="false">
+      <div class="hint" data-i18n="popup_hotkey_key_hint">
+        One letter A–Z or digit 0–9. Works regardless of keyboard layout.
+      </div>
+    </div>
+
+    <div class="group">
+      <label>
+        <input type="radio" name="hotkeyMode" value="cursor">
+        <span data-i18n="popup_hotkey_mode_cursor">Image under cursor</span>
+      </label>
+      <label>
+        <input type="radio" name="hotkeyMode" value="visible">
+        <span data-i18n="popup_hotkey_mode_visible">All visible images</span>
+      </label>
+    </div>
+  </div>
+
   <div class="section" id="modeSection">
     <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;" data-i18n="popup_mode_title">
       Display mode

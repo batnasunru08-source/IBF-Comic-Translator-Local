@@ -8,7 +8,10 @@ const SETTINGS = {
   autoTranslate: false,
   renderMode: "replace",
   sourceOcrLang: "en",
-  targetLang: "Russian"
+  targetLang: "Russian",
+  hotkeyEnabled: false,
+  hotkeyCode: "KeyT",
+  hotkeyMode: "cursor"
 };
 
 function getImageUrl(img) {
@@ -229,14 +232,21 @@ function showToast(message, kind) {
   }, isError ? 5000 : 2200);
 }
 
+function isValidHotkeyCode(code) {
+  return /^(Key[A-Z]|Digit[0-9])$/.test(String(code ?? ""));
+}
+
 async function loadSettings() {
   try {
-    const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang } = await chrome.storage.local.get({
+    const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang, hotkeyEnabled, hotkeyCode, hotkeyMode } = await chrome.storage.local.get({
       enabled: true,
       autoTranslate: false,
       renderMode: "replace",
       sourceOcrLang: "en",
-      targetLang: "Russian"
+      targetLang: "Russian",
+      hotkeyEnabled: false,
+      hotkeyCode: "KeyT",
+      hotkeyMode: "cursor"
     });
 
     SETTINGS.enabled = enabled !== false;
@@ -244,6 +254,9 @@ async function loadSettings() {
     SETTINGS.renderMode = renderMode === "overlay" ? "overlay" : "replace";
     SETTINGS.sourceOcrLang = sourceOcrLang ?? "en";
     SETTINGS.targetLang = targetLang ?? "Russian";
+    SETTINGS.hotkeyEnabled = hotkeyEnabled === true;
+    SETTINGS.hotkeyCode = isValidHotkeyCode(hotkeyCode) ? hotkeyCode : "KeyT";
+    SETTINGS.hotkeyMode = hotkeyMode === "visible" ? "visible" : "cursor";
   } catch (error) {
     console.error("[Comic Translator] loadSettings error:", error);
   }
@@ -252,7 +265,7 @@ async function loadSettings() {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
 
-  const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang } = changes;
+  const { enabled, autoTranslate, renderMode, sourceOcrLang, targetLang, hotkeyEnabled, hotkeyCode, hotkeyMode } = changes;
   if (enabled) SETTINGS.enabled = enabled.newValue !== false;
   if (autoTranslate) {
     SETTINGS.autoTranslate = autoTranslate.newValue === true;
@@ -261,6 +274,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (renderMode) SETTINGS.renderMode = renderMode.newValue === "overlay" ? "overlay" : "replace";
   if (sourceOcrLang) SETTINGS.sourceOcrLang = sourceOcrLang.newValue ?? "en";
   if (targetLang) SETTINGS.targetLang = targetLang.newValue ?? "Russian";
+  if (hotkeyEnabled) SETTINGS.hotkeyEnabled = hotkeyEnabled.newValue === true;
+  if (hotkeyCode) SETTINGS.hotkeyCode = isValidHotkeyCode(hotkeyCode.newValue) ? hotkeyCode.newValue : "KeyT";
+  if (hotkeyMode) SETTINGS.hotkeyMode = hotkeyMode.newValue === "visible" ? "visible" : "cursor";
 
   applyGlobalState();
 });
@@ -834,6 +850,71 @@ window.addEventListener("scroll", debouncedScanImages, { passive: true });
 window.addEventListener("resize", debouncedScanImages, { passive: true });
 window.addEventListener("load", scanImages);
 document.addEventListener("readystatechange", scanImages);
+
+const LAST_MOUSE = { x: null, y: null };
+
+window.addEventListener("mousemove", (event) => {
+  LAST_MOUSE.x = event.clientX;
+  LAST_MOUSE.y = event.clientY;
+}, { passive: true });
+
+function isEditableTarget(node) {
+  if (!node) return false;
+  const tag = node.nodeType === Node.ELEMENT_NODE ? node.tagName : "";
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || node.isContentEditable === true;
+}
+
+function findImgByProxyElement(el) {
+  for (const [img, state] of STATES.entries()) {
+    if (state.overlay === el || state.clone === el) return img;
+  }
+  return null;
+}
+
+function findHotTarget() {
+  if (LAST_MOUSE.x === null || LAST_MOUSE.y === null) return null;
+  const stack = document.elementsFromPoint(LAST_MOUSE.x, LAST_MOUSE.y);
+  for (const el of stack) {
+    if (!(el instanceof HTMLImageElement)) continue;
+    if (el.dataset.comicTranslatorOverlay === "1" || el.dataset.comicTranslatorClone === "1") {
+      const source = findImgByProxyElement(el);
+      if (source) return source;
+      continue;
+    }
+    if (looksLikeImage(el)) return el;
+  }
+  return null;
+}
+
+function triggerHotkeyTranslate(img) {
+  if (!img) return;
+  bindImage(img);
+  getState(img).button?.click();
+}
+
+function translateVisibleImages() {
+  const images = document.querySelectorAll("img");
+  for (const img of images) {
+    if (!looksLikeImage(img) || !isInViewport(img)) continue;
+    if (getState(img).translatedDataUrl) continue;
+    triggerHotkeyTranslate(img);
+  }
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.repeat || event.isComposing) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  if (isEditableTarget(event.target)) return;
+  if (!SETTINGS.enabled || !SETTINGS.hotkeyEnabled) return;
+  if (event.code !== SETTINGS.hotkeyCode) return;
+
+  if (SETTINGS.hotkeyMode === "visible") {
+    translateVisibleImages();
+    return;
+  }
+
+  triggerHotkeyTranslate(findHotTarget());
+}, { capture: true });
 
 // Обработчик контекстного меню: находим img с этим src и запускаем перевод.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
