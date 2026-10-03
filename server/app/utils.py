@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 
 JP_RE = re.compile(r"[一-龯ぁ-ゔァ-ヴー々〆〤]")
@@ -18,6 +19,60 @@ def is_cjk_text(text: str) -> bool:
 
 def sha1_bytes(content: bytes) -> str:
     return hashlib.sha1(content).hexdigest()
+
+
+def is_echo_translation(source_text: str | None, translation: str | None) -> bool:
+    """True, если перевод — тот же текст, что и исходник (модель вернула вход).
+
+    Типично для OCR-мусора: «Vyna Vtha» → «Vyna Vtha», «2VSW» → «2V SW».
+    Нормализуем регистр и убираем пунктуацию/пробелы — сравниваем только
+    буквы и цифры. Пустые строки эхом не считаем.
+    """
+    def _norm(value: str | None) -> str:
+        return re.sub(r"[^\w]+", "", value or "").lower()
+
+    src = _norm(source_text)
+    return bool(src) and src == _norm(translation)
+
+
+# Обратная транслитерация кириллицы — для детекта переводов-транслитераций.
+_CYR_TO_LAT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+_CYRILLIC_RE = re.compile(r"[а-яё]")
+
+
+def _latin_letters(text: str | None) -> str:
+    return "".join(ch for ch in (text or "").lower() if "a" <= ch <= "z")
+
+
+def _cyrillic_as_latin(text: str | None) -> str:
+    return "".join(_CYR_TO_LAT.get(ch, "") for ch in (text or "").lower() if ch in _CYR_TO_LAT)
+
+
+def is_transliteration(source_text: str | None, translation: str | None, cfg: dict | None = None) -> bool:
+    """True, если перевод — фонетическая транслитерация латинского исходника.
+
+    Типично для OCR-мусора: «Vyna Vtha» → «Вина Втха», «tinv He» → «тинв Хе».
+    Кириллицу перевода обратно транслитерируем в латиницу и сравниваем с
+    исходником по похожести (порог translit_similarity_min). Настоящие
+    переводы не задеваются: «Привет, мир» vs «Hello world» — 0.21.
+    """
+    if cfg is None:
+        cfg = load_translation_filter()
+    # Исходник уже кириллический — это не транслитерация латиницы.
+    if _CYRILLIC_RE.search((source_text or "").lower()):
+        return False
+    src = _latin_letters(source_text)
+    dst = _cyrillic_as_latin(translation)
+    if not src or not dst:
+        return False
+    ratio = SequenceMatcher(None, src, dst).ratio()
+    return ratio >= float(cfg["translit_similarity_min"])
 
 
 def clamp(value: int, low: int, high: int) -> int:
@@ -73,6 +128,10 @@ _FILTER_DEFAULTS: dict = {
     "low_conf_threshold": 0.45,
     "low_conf_max_len": 8,
     "cjk_min_text_len": 1,
+    "cjk_single_conf_max": 0.70,
+    "latin_garbage_symbols": "+><=",
+    "mixed_script_min_share": 0.25,
+    "translit_similarity_min": 0.75,
     "huge_block_area_ratio": 0.20,
     "huge_block_min_chars": 30,
     "huge_block_min_density": 0.0003,
@@ -88,6 +147,10 @@ _SCALAR_CASTS = (
     ("low_conf_threshold", float),
     ("low_conf_max_len", int),
     ("cjk_min_text_len", int),
+    ("cjk_single_conf_max", float),
+    ("latin_garbage_symbols", str),
+    ("mixed_script_min_share", float),
+    ("translit_similarity_min", float),
     ("huge_block_area_ratio", float),
     ("huge_block_min_chars", int),
     ("huge_block_min_density", float),
@@ -155,7 +218,8 @@ def looks_translatable(text: str | None, conf: float = 1.0, cfg: dict | None = N
 
     reason: ok, empty, too_short, low_conf, low_alnum, too_few_letters,
     single_char_repeat, ocr_artifact, single_letters, syllable_repeat,
-    watermark, noise_token, sfx_token.
+    single_cjk_low_conf, mixed_script, latin_symbols, watermark, noise_token,
+    sfx_token.
 
     Языковой профиль определяется по скрипту текста: для CJK-only минимальная
     длина — cjk_min_text_len (одиночный кандзи — валидное слово), латинские
@@ -180,6 +244,27 @@ def looks_translatable(text: str | None, conf: float = 1.0, cfg: dict | None = N
     # Низкий confidence + короткий текст — типичный OCR-шум.
     if conf < float(cfg["low_conf_threshold"]) and len(text) < int(cfg["low_conf_max_len"]):
         return False, "low_conf"
+
+    # Одиночный CJK при средней уверенности — ложный детект OCR на арте
+    # (штрихи, текстуры, сетка клавиатуры). Чистый одиночный кандзи/кана
+    # распознаётся уверенно (conf >= cjk_single_conf_max).
+    if cjk and len(text) == 1 and conf < float(cfg["cjk_single_conf_max"]):
+        return False, "single_cjk_low_conf"
+
+    # Склейка латиницы с CJK — OCR-мусор, если ОБА скрипта занимают заметную
+    # долю букв: такой блок переводится кусками и даёт бессмыслицу. Пара
+    # случайных кана в английской реплике (или латинское слово в японской) —
+    # не мусор: доля меньшинства мала, блок переводится как обычно.
+    if LATIN_RE.search(text) and CJK_RE.search(text):
+        latin_count = len(LATIN_RE.findall(text))
+        cjk_count = len(CJK_RE.findall(text))
+        total_letters = latin_count + cjk_count
+        if total_letters and min(latin_count, cjk_count) / total_letters >= float(cfg["mixed_script_min_share"]):
+            return False, "mixed_script"
+
+    # Латинские обрывки с код-символами (+ > < =) — технический артефакт OCR.
+    if LATIN_RE.search(text) and any(ch in text for ch in str(cfg["latin_garbage_symbols"])):
+        return False, "latin_symbols"
 
     alnum = sum(c.isalnum() for c in text)
     if alnum / len(text) < float(cfg["min_alnum_ratio"]):

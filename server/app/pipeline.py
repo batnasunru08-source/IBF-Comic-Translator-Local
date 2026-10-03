@@ -16,7 +16,7 @@ from .detector import CandidateBox
 from .models import TextBlock
 from .ocr import recognize_blocks
 from .renderer import inpaint_text, render_translations
-from .utils import load_translation_filter, looks_translatable, sha1_bytes
+from .utils import is_echo_translation, is_transliteration, load_translation_filter, looks_translatable, sha1_bytes
 
 
 # Кеш распознанных OCR-блоков по (digest, source_ocr_lang).
@@ -555,6 +555,18 @@ def _process_image_bytes_impl(
     translator.reset()
 
     for i, (block, translated) in enumerate(zip(blocks, translated_texts), start=1):
+        # Эхо: модель вернула исходный текст (типично для OCR-мусора) — это не
+        # перевод, блок не рендерим: оригинальный арт/текст остаётся на месте.
+        if translated and is_echo_translation(block.source_text, translated):
+            filtered_blocks_meta.append({"text": (block.source_text or "")[:120], "reason": "echo_translation"})
+            print(f"[PIPELINE] echo translation dropped[{i}]: {translated!r}")
+            translated = ""
+        elif translated and is_transliteration(block.source_text, translated):
+            # Перевод-транслитерация латинского мусора («Vyna Vtha» → «Вина Втха»)
+            # тоже не перевод — блок остаётся как в оригинале.
+            filtered_blocks_meta.append({"text": (block.source_text or "")[:120], "reason": "transliteration"})
+            print(f"[PIPELINE] transliteration dropped[{i}]: {translated!r}")
+            translated = ""
         block.translated_text = translated
         print(f"[PIPELINE] translated[{i}]: {translated!r}")
 

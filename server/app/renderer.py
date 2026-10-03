@@ -635,9 +635,28 @@ def render_translations(
         bg_x2 = int(text_x + text_w + pad_bg_x)
         bg_y2 = int(text_y + text_h + pad_bg_y)
 
+        # Плашку ограничиваем рамками OCR-блока (± небольшой запас) и краями
+        # картинки: фон не должен выползать за пузырь и закрывать арт. Текст
+        # всегда лежит внутри блока, поэтому клип его не режет; если места
+        # всё же не хватает (текст не влез минимальным шрифтом) — плашка
+        # расширяется до границ текста, чтобы его не обрезать.
+        clamp_margin = max(4, min(pad_x, pad_y) // 3)
+        bg_x1 = min(max(bg_x1, x1 - clamp_margin, 0), int(text_x))
+        bg_y1 = min(max(bg_y1, y1 - clamp_margin, 0), int(text_y))
+        bg_x2 = max(min(bg_x2, x2 + clamp_margin, iw), int(text_x + text_w) + 1)
+        bg_y2 = max(min(bg_y2, y2 + clamp_margin, ih), int(text_y + text_h) + 1)
+
         bubble_w = bg_x2 - bg_x1
         bubble_h = bg_y2 - bg_y1
-        radius = max(8, min(bubble_w, bubble_h) // 2)
+        # Радиус скругления ограничен зазором между плашкой и текстом:
+        # у тугих плашек углы не должны срезать фон под строками текста.
+        gap = min(
+            int(text_x) - bg_x1,
+            int(text_y) - bg_y1,
+            bg_x2 - (int(text_x + text_w) + 1),
+            bg_y2 - (int(text_y + text_h) + 1),
+        )
+        radius = max(0, min(max(8, min(bubble_w, bubble_h) // 2), gap))
         draw.rounded_rectangle([bg_x1, bg_y1, bg_x2, bg_y2], radius=radius, fill=bg_color)
 
         draw.multiline_text(

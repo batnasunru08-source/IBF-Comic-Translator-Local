@@ -35,6 +35,12 @@ PADDLE_LANG_MAP = {
 }
 
 
+# Языки с вертикальным письмом (японский, китайский упр./трад.).
+# Для них нужен классификатор ориентации строк (use_textline_orientation),
+# для остальных он только тормозит OCR в 2–4 раза на плотных страницах.
+_VERTICAL_TEXT_LANGS = frozenset({"japan", "ch", "chinese_cht"})
+
+
 def _normalize_paddle_lang(source_lang: str) -> str:
     normalized = (source_lang or "en").strip().lower()
     return PADDLE_LANG_MAP.get(normalized, normalized)
@@ -90,10 +96,12 @@ def get_paddleocr_engine(source_lang: str):
     paddle_lang = _normalize_paddle_lang(source_lang)
     device = _pick_device()
     engine = _pick_engine()
+    # Классификатор ориентации строк — только для вертикальных языков (ja/zh).
+    use_textline_orientation = paddle_lang in _VERTICAL_TEXT_LANGS
 
     print(
         f"[OCR] PaddleOCR source_lang={source_lang} paddle_lang={paddle_lang} "
-        f"device={device} engine={engine}"
+        f"device={device} engine={engine} textline_orientation={use_textline_orientation}"
     )
 
     # При использовании Transformers backend CPU — убираем device='gpu:0',
@@ -102,7 +110,7 @@ def get_paddleocr_engine(source_lang: str):
         "lang": paddle_lang,
         "use_doc_orientation_classify": False,
         "use_doc_unwarping": False,
-        "use_textline_orientation": True,
+        "use_textline_orientation": use_textline_orientation,
         "device": device,
         "engine": engine,
         "precision": "fp16" if device == "gpu:0" else "fp32",
